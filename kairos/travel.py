@@ -114,3 +114,106 @@ class JinkoFlights:
         finally:
             call.seconds = time.perf_counter() - start
             self.tracer.calls.append(call)
+
+
+@dataclass(frozen=True, slots=True)
+class HotelSummary:
+    city: str
+    checkin: str
+    checkout: str
+    options: int
+    cheapest_eur: float | None
+    lines: tuple[str, ...]   # a few hotels, cheapest well-rated first
+    seconds: float
+
+    def as_text(self) -> str:
+        nights = _nights(self.checkin, self.checkout)
+        head = (f"Hotels in {self.city}, {self.checkin} to {self.checkout} ({nights} nights): {self.options} found, "
+                f"cheapest {self.cheapest_eur:.0f} EUR in total" if self.cheapest_eur is not None
+                else f"Hotels in {self.city}, {self.checkin} to {self.checkout}: none found")
+        return head + "\n" + "\n".join(self.lines)
+
+
+class JinkoHotels:
+    """Hotel rooms with live rates through Jinko's hotel_search: a city (with its country code) and the dates."""
+
+    name = "jinko hotels"
+
+    def __init__(self, api_key: str, base_url: str = "https://api.gojinko.com", tracer: Tracer | None = None) -> None:
+        import httpx
+
+        if not api_key:
+            raise RuntimeError("JINKO_API_KEY is not set")
+        self._key = api_key
+        self._url = base_url.rstrip("/") + "/v1/hotel_search"
+        self._client = httpx.AsyncClient(timeout=40.0)
+        self.tracer = tracer or Tracer()
+
+    async def search(self, city: str, country_code: str, checkin: str, checkout: str, adults: int = 2,
+                     min_stars: int = 0) -> HotelSummary:
+        start = time.perf_counter()
+        call = Call("hotels", "jinko", 0.0)
+        body = {"city_name": city, "country_code": country_code.upper()[:2], "checkin": checkin, "checkout": checkout,
+                "adults": max(1, min(int(adults), 8)), "currency": "EUR"}
+        try:
+            response = await self._client.post(self._url, headers={"X-API-Key": self._key}, json=body)
+            retry = _suggested_city(response)
+            if retry is not None:
+                # "Lisbonne" is not in Jinko's catalog, "Lisbon" is: Jinko says so; once, with its suggestion.
+                body |= retry
+                city = retry["city_name"]
+                response = await self._client.post(self._url, headers={"X-API-Key": self._key}, json=body)
+            response.raise_for_status()
+            hotels = [h for h in response.json().get("hotels", []) if isinstance(h, dict) and h.get("rooms")]
+        except Exception:
+            call.ok = False
+            raise
+        finally:
+            call.seconds = time.perf_counter() - start
+            self.tracer.calls.append(call)
+        rows = []
+        for hotel in hotels:
+            rates = [rate for room in hotel.get("rooms", []) for rate in room.get("rates", []) if rate.get("total_amount")]
+            if not rates:
+                continue
+            best = min(rates, key=lambda rate: rate["total_amount"])
+            rows.append({"name": hotel.get("name", ""), "stars": hotel.get("star_rating"), "rating": hotel.get("rating"),
+                         "reviews": hotel.get("review_count"), "price": float(best["total_amount"]),
+                         "board": best.get("board_name", ""), "refundable": best.get("is_refundable", False)})
+        if min_stars:
+            rows = [r for r in rows if (r["stars"] or 0) >= min_stars]  # "un cinq étoiles"
+        rows.sort(key=lambda r: r["price"])
+        well_rated = [r for r in rows if (r["rating"] or 0) >= 8.0]
+        shown = list({id(r): r for r in well_rated[:3] + rows[:2]}.values())[:4]
+        nights = _nights(checkin, checkout)
+        lines = tuple(
+            f"- {r['name']}: {r['stars'] or '?'} stars, rated {r['rating']:.1f}/10" if r["rating"] else f"- {r['name']}"
+            for r in shown)
+        lines = tuple(line + f", {r['price']:.0f} EUR in total ({r['price'] / nights:.0f} EUR a night), {r['board']}"
+                      + (", refundable" if r["refundable"] else "") for line, r in zip(lines, shown))
+        return HotelSummary(city=city, checkin=checkin, checkout=checkout, options=len(rows),
+                            cheapest_eur=rows[0]["price"] if rows else None, lines=lines,
+                            seconds=time.perf_counter() - start)
+
+
+def _nights(checkin: str, checkout: str) -> int:
+    import datetime as dt
+
+    try:
+        return max(1, (dt.date.fromisoformat(checkout) - dt.date.fromisoformat(checkin)).days)
+    except ValueError:
+        return 1
+
+
+def _suggested_city(response) -> dict | None:
+    """Jinko's closest catalog city when the name given did not match confidently, else None."""
+    if response.status_code != 422:
+        return None
+    try:
+        error = response.json().get("error") or {}
+    except ValueError:
+        return None
+    destination = (error.get("suggested_retry") or {}).get("destination") or {}
+    if error.get("code") == "DESTINATION_LOW_CONFIDENCE" and destination.get("city_name"):
+        return {"city_name": destination["city_name"], "country_code": destination.get("country_code", "")}
+    return None

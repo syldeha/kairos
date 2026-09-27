@@ -32,6 +32,7 @@ from .protocol import (
 
 if TYPE_CHECKING:
     from ..runtime import Runtime
+    from .memory import MeetingMemory
 
 PROTOCOL_VERSION = 11
 PROJECT_ID = "kairos"
@@ -52,6 +53,8 @@ AGENTS: dict[str, str] = {
     "research plan": "anticipation",
     "context plan": "anticipation",
     "notes": "notes",
+    "meeting notes": "notes",
+    "board": "coordinator",  # the Board curator node of the Flow
     "archivist": "notes",
     "annotate": "naming",
 }
@@ -92,6 +95,7 @@ def project(
     language: str,
     clock: Clock,
     audio_frames: int = 0,
+    memory: MeetingMemory | None = None,
 ) -> AtlasState:
     state = AtlasState(
         project_id=PROJECT_ID,
@@ -127,7 +131,12 @@ def project(
         ReservoirEvent(thought_id=tid, event=event, by=by, why=why, utterance=text, at=clock.iso(t))
         for t, tid, event, by, why, text in rt.board.log[-150:]
     ]
-    state.speeches = [_speech(i, clock) for i in rt.interventions[-60:]]
+    state.speeches = sorted(
+        [_speech(i, clock) for i in rt.interventions[-60:]]
+        + [Speech(text=text, reason="direct_address", status="finished", source_ids=[utterance_id(segment)],
+                  created_at=clock.iso(t)) for t, segment, text in getattr(rt, "cues", [])[-20:]],
+        key=lambda speech: speech.created_at,
+    )
     state.policy_decisions = _policy(rt, clock)
     state.trace = _trace(rt, clock)
     state.tasks = [_task(b, clock) for b in rt.supervisor.briefs[-30:]]
@@ -139,10 +148,18 @@ def project(
         state.topic_since = clock.iso(rt.topic.history[-1][0])
         if len(rt.topic.history) > 1:
             state.previous_topic = rt.topic.history[-2][1]
-    state.notes = snap.notes
-    state.notes_document = _notes(snap.notes, [f.answer for f in snap.findings if f.status == "done"])
-    state.notes_version = len(rt.board.log) if snap.notes else 0
-    state.notes_cursor = len(state.transcript)
+    if memory is not None and memory.version > 0:
+        # What people read: structured notes and the board, written by the Notes & Board agent.
+        state.notes = memory.markdown(language)
+        state.notes_document = memory.document
+        state.notes_version = memory.version
+        state.notes_cursor = memory.cursor
+        state.cards = list(memory.cards)
+    else:
+        state.notes = snap.notes
+        state.notes_document = _notes(snap.notes, [f.answer for f in snap.findings if f.status == "done"])
+        state.notes_version = 0
+        state.notes_cursor = 0
     state.voice_mode = "active"
     state.health = _health(rt)
     state.pipeline = PipelineMetrics(
@@ -274,7 +291,8 @@ def _task(b: Any, clock: Clock) -> Task:
         phase="complete" if status in {"done", "failed", "canceled"} else "executing"
         if status == "running"
         else "queued",
-        result={"answer": b.result, "sources": list(b.sources)} if b.result else None,
+        result={"answer": b.result, "sources": list(b.sources),
+                "details": {k: v.get("value") for k, v in b.details.items()}} if b.result or b.details else None,
         error=b.error or None,
         created_at=clock.iso(b.created_at),
         completed_at=clock.iso(b.history[-1][0]) if status in {"done", "failed", "canceled"} and b.history else None,

@@ -272,3 +272,17 @@ input:focus, select:focus { border-color: #9276eb88; }
 .latency th:first-child, .latency td:first-child { text-align: left; }
 .latency th { color: var(--muted); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
 
+
+/* Chat: the conversation as the test scenarios play it, with Kairos's reply delay */
+.chat { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; padding: 8px 4px 40px; }
+.chat-empty { color: #8c8697; text-align: center; margin-top: 40px; }
+.chat-row { display: flex; }
+.chat-row.kairos { justify-content: flex-end; }
+.chat-bubble { max-width: 72%; border: 1px solid var(--line); border-radius: 14px; padding: 9px 13px; background: rgba(255, 255, 255, 0.03); }
+.chat-row.kairos .chat-bubble { background: rgba(155, 132, 248, 0.14); border-color: rgba(155, 132, 248, 0.35); }
+.chat-bubble header { display: flex; gap: 8px; align-items: baseline; font-size: 10px; color: #8c8697; margin-bottom: 3px; }
+.chat-bubble header strong { color: #d9d3e6; font-size: 11px; }
+.chat-bubble p { margin: 0; font-size: 14px; line-height: 1.5; }
+.chat-bubble.partial p { color: #b7a8f8; }
+.chat-delay { color: #9be3b0; }
+.chat-cut { color: #f2a3a3; }

@@ -27,7 +27,7 @@ from dataclasses import dataclass, field, replace
 from ..board import Board
 from ..contracts import Finding, Thought, ThoughtStatus
 from ..llm import LLM
-from ..travel import JinkoFlights
+from ..travel import JinkoFlights, JinkoHotels
 from .researcher import NOT_FOUND, spoken
 from .common import enforce_cap, language_of, recent_ack, render_transcript
 from .thinkers import _speak_in
@@ -41,9 +41,22 @@ SPECS: dict[str, dict] = {
                             "e.g. \"Cameroun: Douala (DLA), Yaoundé (NSI)\""),
             "date": ("departure date as YYYY-MM-DD, or up to 7 comma-separated dates when a period around a day was "
                      "given; the next occurrence, never in the past; a month alone is not enough"),
-            "travellers": "number of people flying, a whole number",
         },
-        "optional": {"return_date": "return date as YYYY-MM-DD, only if one was given"},
+        "optional": {"return_date": "return date as YYYY-MM-DD, only if one was given",
+                     "travellers": "number of people flying, a whole number (prices are per person: never ask)"},
+    },
+    "hotels": {
+        "goal": "find hotels for the stay the person needs",
+        "details": {
+            "city": ("the city to stay in, its English name with its two-letter ISO country code, e.g. \"Lisbon (PT)\" "
+                     "for Lisbonne; \"là-bas\" "
+                     "or \"sur place\" is the destination of the trip being discussed"),
+            "checkin": "arrival date as YYYY-MM-DD: the trip's arrival day when a trip is being discussed",
+            "checkout": ("departure date as YYYY-MM-DD: the trip's return day, or arrival plus the number of nights "
+                         "said; if nobody said how long, assume 2 nights"),
+            "guests": "number of people staying, a whole number",
+        },
+        "optional": {"stars": "minimum star rating asked for (\"un cinq étoiles\" -> 5), only if said"},
     },
     "web": {
         "goal": "find on the web what the person needs (a place, a restaurant, an address, a schedule, a price, a fact)",
@@ -51,8 +64,12 @@ SPECS: dict[str, dict] = {
             "query": ("a specific web search query: what is sought and, when it matters, where or when (e.g. "
                       "\"restaurant végétarien pas cher Paris 5e\"); a broad but real need is searchable as it is "
                       "(\"des villes avec de belles plages en Afrique\" -> \"meilleures villes balnéaires Afrique\"); "
-                      "missing only when there is nothing to search at all (\"un resto\" with no place); no names "
-                      "of people, nothing about this team"),
+                      "a vague question on recent news is searchable with today's month (\"la catastrophe de "
+                      "ces derniers jours\" -> \"catastrophe naturelle actualité septembre 2026\"); "
+                      "missing only when there is nothing to search at all (\"un resto\" with no place); "
+                      "\"là-bas\", \"there\", \"sur place\" is the place mentioned just before or in the notes "
+                      "(\"On sera à Lisbonne\" then \"quoi faire là-bas le soir ?\" -> \"que faire le soir à "
+                      "Lisbonne\"); never the assistant's name (Kairos); no names of people, nothing about this team"),
         },
         "optional": {},
     },
@@ -67,6 +84,7 @@ Optional details:
 Kairos is an AI assistant: it has no preferences of its own ("mars me convient" is wrong; "d'accord pour mars" is right).
 The transcript comes from live speech recognition: a name that sounds like "Kairos" ("Kéros", "Kiros", "Caïros") is people talking to the assistant, never a place, a restaurant or a name to search. Other misheard words: understand them by the conversation, and take names of places from what was said or found before (a restaurant Kairos proposed).
 Fill each detail from the transcript, the meeting notes, the other searches and Kairos's memory.
+The latest line wins: when it changes something already known (other dates, "deux nuits", "le week-end prochain", a star rating, another city), replace the old value with it.
 Link the request to the plan being discussed: "là-bas", "the hotels there", "pour le voyage", "on the same day" take the destination, the dates and the number of people of the trip in the notes or in the other searches; never ask again for what the conversation already settled. Take what the conversation makes clear, even if said in other words ("rentrer au Cameroun" gives the destination; "I'm alone" gives 1 traveller); never invent what nobody said.
 Return one JSON object: {{"details": {{"name": {{"value": "...", "source": "L12 or M3"}}}}, "missing": ["name"], "assumed": {{"name": {{"value": "...", "why": "..."}}}}, "declined": false, "question": "..."}}.
 "assumed" proposes a sensible default for every missing detail that has one: 1 traveller when the person speaks only of themselves, the number of people mentioned otherwise ("on sera six", "with my two boys" -> 3); when no date at all was given, the next 7 days from tomorrow; when only a month or a period was given ("en mars", "around December", "end of year"), up to 7 comma-separated dates in the middle of it (e.g. March -> 2027-03-12,...,2027-03-18). Never for a place nobody mentioned.
@@ -89,6 +107,8 @@ UNAVAILABLE = {"French": "Je n'arrive pas à obtenir les prix pour l'instant. Je
 #: What Kairos says when a search it owed someone found nothing.
 FAILED = {"French": "Je n'ai rien trouvé de fiable sur « {q} ». Tu peux préciser un peu ?",
           "English": "I couldn't find anything reliable on \"{q}\". Can you tell me a bit more?"}
+
+HOTEL_SAY_SYSTEM = """Kairos, an AI assistant in a conversation, searched hotels. Say the result in two short spoken sentences in {language}: the best value option (name, rating out of 10, price per night and in total), and one alternative. Prices are live rates for these dates. Plain words, no symbols, no codes. Return JSON {{"say": "..."}}."""
 
 SAY_SYSTEM = """Kairos, an AI assistant in a conversation, searched flights. Say the result in two short spoken sentences in {language}, answering what the person wanted (cheapest option, direct or not, duration, dates): destination, stops, time, price per person, and that prices are indicative. If Kairos already gave a result for this trip, say only what changed ("with the return on January 1st, it's 1085 euros"), not the whole result again. Plain words, no symbols, no codes. Return JSON {{"say": "..."}}."""
 
@@ -121,11 +141,13 @@ class Brief:
 
 class WorkerSupervisor:
     def __init__(self, board: Board, llm: LLM, language: str = "French", flights: JinkoFlights | None = None,
-                 researcher=None, today: dt.date | None = None, search=None) -> None:
+                 researcher=None, today: dt.date | None = None, search=None,
+                 hotels: JinkoHotels | None = None) -> None:
         self.board = board
         self.llm = llm
         self.language = language
         self.flights = flights
+        self.hotels = hotels
         self.researcher = researcher
         self.search = search if search is not None else getattr(researcher, "provider", None)
         self._launches = 0
@@ -134,11 +156,13 @@ class WorkerSupervisor:
         self._ids = itertools.count(1)
         self._tasks: set[asyncio.Task] = set()
         self._owned: set[int] = set()  # lines a brief took as answers: the answer lane leaves them alone
+        self.room_questions: set[int] = set()  # factual questions to the room (the dispatcher's reading)
 
     # -- the dispatcher opens work ----------------------------------------------------
 
     def can(self, kind: str) -> bool:
-        return (kind == "flights" and self.flights is not None) or (kind == "web" and self.search is not None)
+        return ((kind == "flights" and self.flights is not None) or (kind == "web" and self.search is not None)
+                or (kind == "hotels" and self.hotels is not None))
 
     def waiting(self) -> list[Brief]:
         return [b for b in self.briefs if b.status in ("needs_details", "asked")]
@@ -182,12 +206,16 @@ class WorkerSupervisor:
         self.briefs.append(brief)
         if recent is not None:
             brief.history.append((self.board.snapshot().room.t, f"affine la recherche {recent.id}"))
-            brief.last_line = segment
             if not brief.missing:
-                self._acknowledge(brief)
+                if addressed:
+                    # Asked: "je regarde", and the refined result is owed to this line.
+                    brief.last_line = segment
+                    self._acknowledge(brief)
+                    self._owned.add(segment)
+                # Not asked ("le fado ça me tente bien"): the search runs silently, its result waits.
                 self._spawn(self.run(brief))
-                self._owned.add(segment)
                 return brief
+            brief.last_line = segment
         if addressed:
             self._owned.add(segment)
             brief.last_line = segment  # Kairos owes this person a reply: "je regarde", then the result
@@ -306,6 +334,10 @@ class WorkerSupervisor:
         reply = segment if (progress or reask) and segment is not None else None
         if question and (brief.question_id is None or (reply is not None and brief.status in ("asked", "needs_details"))):
             # First question, or a follow-up asking only for what is still missing (to the person who spoke).
+            if brief.question_id is not None and not brief.addressed and brief.asked_at is None:
+                return bool(progress)  # an offer nobody took up is not made again, in other words or not
+            if not progress and not reask and _normalized(question) == _normalized(brief.question):
+                return False  # the same question again, nothing new said, nobody asked about it: once was enough
             self._retire_question(brief, "remplacée par une question plus précise")
             brief.question = question
             self._ask(brief, reply_to=reply)
@@ -378,8 +410,9 @@ class WorkerSupervisor:
         """The person asks for what a search found: if its result never reached the conversation, it is owed now."""
         snap = self.board.snapshot()
         result = next((t for t in snap.thoughts if t.id == f"r{recent.id}"), None)
-        if result is None or result.status == ThoughtStatus.SPOKEN:
-            return  # already said (the answer lane confirms briefly), or nothing to give
+        said = any(t.id.startswith(f"r{recent.id}") and t.status == ThoughtStatus.SPOKEN for t in snap.thoughts)
+        if result is None or said:
+            return  # already said, in one copy or another (the answer lane confirms briefly), or nothing to give
         self._owned.add(segment)
         self._open_reply(segment)
         changes = {result.id: {"status": ThoughtStatus.STALE, "note": "redonnée en réponse"}} \
@@ -410,6 +443,17 @@ class WorkerSupervisor:
             return brief.last_line
         return brief.segment if brief.addressed else None
 
+    def _result_line(self, brief: Brief) -> int | None:
+        """The line a result answers: the one it is owed to, or a question put to the room ("qui a gagné la Coupe
+        du monde ?"): the room waits for that answer, so it is said at the next pause, not when Jev happens to
+        pick it (15 s later in a live test). Offers and questions for details do not get this."""
+        owed = self._owed_line(brief)
+        line = owed if owed is not None else (brief.segment if brief.segment in self.room_questions else None)
+        if line is not None and any(t.answers == line and t.kind == "finding" and t.status == ThoughtStatus.SPOKEN
+                                    for t in self.board.snapshot().thoughts):
+            return None  # another search already answered this line: a second answer would repeat it
+        return line
+
     # -- running ---------------------------------------------------------------------
 
     async def run(self, brief: Brief) -> None:
@@ -420,6 +464,8 @@ class WorkerSupervisor:
         try:
             if brief.kind == "flights":
                 await self._run_flights(brief)
+            elif brief.kind == "hotels":
+                await self._run_hotels(brief)
             else:
                 await self._run_web(brief)
         except Exception as exc:
@@ -456,7 +502,7 @@ class WorkerSupervisor:
 
     async def _run_web(self, brief: Brief) -> None:
         query = brief.details["query"]["value"]
-        owed = self._owed_line(brief)
+        owed = self._result_line(brief)
         snap = self.board.snapshot()
         owed_line = next((s for s in snap.transcript if s.id == owed), None)
         if owed_line is not None:
@@ -498,7 +544,7 @@ class WorkerSupervisor:
         dates = re.findall(r"\d{4}-\d{2}-\d{2}", d["date"]["value"])[:7]
         back = re.findall(r"\d{4}-\d{2}-\d{2}", d.get("return_date", {}).get("value", ""))
         summary = await self.flights.search(_codes(d["origin"]["value"])[:2], _codes(d["destination"]["value"])[:3],
-                                            dates, int(re.sub(r"\D", "", d["travellers"]["value"]) or 1),
+                                            dates, int(re.sub(r"\D", "", d.get("travellers", {}).get("value", "1")) or 1),
                                             return_date=back[0] if back else None)
         brief.result = summary.as_text()
         owed_line = next((s for s in self.board.snapshot().transcript if s.id == self._owed_line(brief)), None)
@@ -524,13 +570,58 @@ class WorkerSupervisor:
         if not utterance:
             return
         self._retire_question(brief, "remplacée par le résultat")
-        owed = self._owed_line(brief)
+        owed = self._result_line(brief)
         if self._supersede(brief) and owed is None:
             owed = brief.segment  # the line waited for an answer: the result keeps that promise
         if owed is not None:
             self._open_reply(owed)
         self.board.update_thoughts({}, (Thought(
             id=f"r{brief.id}", topic="vols", content=brief.result.splitlines()[0], utterance=utterance, transition=None,
+            importance=5.0 if owed is not None else 4.0, relevance=0.0, fit_now=1.0 if owed is not None else 0.0,
+            already_said=0.0, status=ThoughtStatus.READY, stimuli=(f"L{brief.segment}", brief.id), version=snap.version,
+            created_at=snap.room.t, answers=owed, kind="finding",
+            brief=brief.id, note=f"résultat de {brief.id}"),), by=f"travaux {brief.id}")
+        enforce_cap(self.board)
+
+    async def _run_hotels(self, brief: Brief) -> None:
+        d = brief.details
+        city, country = _city(d["city"]["value"])
+        checkin = re.findall(r"\d{4}-\d{2}-\d{2}", d["checkin"]["value"])[0]
+        checkout = re.findall(r"\d{4}-\d{2}-\d{2}", d["checkout"]["value"])[0]
+        guests = int(re.sub(r"\D", "", d["guests"]["value"]) or 2)
+        stars = int(re.sub(r"\D", "", d.get("stars", {}).get("value", "")) or 0)
+        summary = await self.hotels.search(city, country, checkin, checkout, guests, min_stars=stars)
+        brief.result = summary.as_text()
+        owed_line = next((s for s in self.board.snapshot().transcript if s.id == self._owed_line(brief)), None)
+        if owed_line is not None:
+            brief.language = language_of(owed_line.text, brief.language)
+        said = await self.llm.json(_speak_in(brief.language) + HOTEL_SAY_SYSTEM.format(language=brief.language),
+                                   f"What the person asked: {brief.line}"
+                                   + (f"\nTheir latest words: {owed_line.text}" if owed_line is not None else "")
+                                   + (f"\nAssumptions you made (say them briefly): {'; '.join(brief.assumptions)}"
+                                      if brief.assumptions else "")
+                                   + f"\n\nResults:\n{brief.result}", purpose="brief result", temperature=0.2)
+        snap = self.board.snapshot()
+        finding = Finding(id=f"f{brief.id}", question=brief.line, query=f"hôtels {city} {checkin} {checkout}",
+                          segment=brief.segment, status="done", started_at=brief.created_at, answer=brief.result,
+                          sources=("Jinko (tarifs en direct)",), seconds=round(summary.seconds, 2))
+        self.board.publish("findings", tuple(f for f in snap.findings if f.id != finding.id) + (finding,))
+        brief.status = "done"
+        utterance = str(said.get("say") or "").strip()
+        if utterance:
+            self._publish_result(brief, utterance, "hôtels", brief.result.splitlines()[0])
+
+    def _publish_result(self, brief: Brief, utterance: str, topic: str, content: str) -> None:
+        """A travel result as a thought, owed to the line that asked (or that waited for an answer)."""
+        self._retire_question(brief, "remplacée par le résultat")
+        owed = self._result_line(brief)
+        if self._supersede(brief) and owed is None:
+            owed = brief.segment
+        if owed is not None:
+            self._open_reply(owed)
+        snap = self.board.snapshot()
+        self.board.update_thoughts({}, (Thought(
+            id=f"r{brief.id}", topic=topic, content=content, utterance=utterance, transition=None,
             importance=5.0 if owed is not None else 4.0, relevance=0.0, fit_now=1.0 if owed is not None else 0.0,
             already_said=0.0, status=ThoughtStatus.READY, stimuli=(f"L{brief.segment}", brief.id), version=snap.version,
             created_at=snap.room.t, answers=owed, kind="finding",
@@ -593,3 +684,13 @@ def _valid(name: str, item: dict) -> bool:
     if name == "travellers":
         return bool(re.search(r"\d", value))
     return bool(value.strip())
+
+
+def _city(value: str) -> tuple[str, str]:
+    """"Lisbonne (PT)" -> ("Lisbonne", "PT"); without a code, France."""
+    match = re.search(r"\(([A-Za-z]{2})\)", value)
+    return re.sub(r"\s*\(.*?\)", "", value).strip(), (match.group(1).upper() if match else "FR")
+
+
+def _normalized(text: str) -> str:
+    return " ".join(re.findall(r"\w+", (text or "").lower()))

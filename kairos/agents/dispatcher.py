@@ -23,6 +23,11 @@ QUESTIONS = {
                   "or judgment ('do you think...', 'what do you guys reckon'), which is for the people in the room, "
                   "nor a 'tu' question about a person's own plans, trip or life ('toi tu pars de Paris aussi ?'): "
                   "Kairos, the assistant, is not part of the plans."),
+    "fact": ("Does the LAST line ask a factual question about the world that the people in the room do not seem to "
+             "know (a result, a winner, a date, a price, how something works: 'qui a gagné la Coupe du monde ?'), "
+             "or say they cannot remember a fact ('il y a eu une catastrophe dernièrement, je ne me rappelle plus "
+             "c'était quoi', 'c'était quoi déjà le nom de ce film ?'), rather than a question for the people themselves (their plans, choices or preferences: 'on prend un "
+             "hôtel ou un appartement ?', 'qu'est-ce qu'on fait sur place ?')?"),
     "new_topic": ("Do the five latest lines, taken together, talk about a different subject than the CURRENT TOPIC "
                   "(another trip, another problem, another plan)? No if they continue it, add details to it or come "
                   "back to it, and no when there is no current topic yet."),
@@ -38,9 +43,12 @@ WORK_QUESTION = {
                     "trip's price, schedule or duration, or expresses a wish or plan to travel ('trouve-nous des "
                     "billets Paris Groningen', 'ça coûte combien le trajet ?' while a trip is discussed, 'I'd like "
                     "to go home to Cameroon'), unless the person only wants a train, a bus or a car"),
+        "hotels": ("a place to stay: hotels, accommodation, rooms or nights somewhere ('tu peux regarder les hôtels "
+                   "là-bas ?', 'où dormir à Lisbonne', 'a hotel near the station')"),
         "web": ("any other thing to find, check or look up: a place, a restaurant, an address, opening hours, a "
                 "price of something else, a fact, a result, a trip explicitly by train, bus or car (SNCF, "
-                "BlaBlaCar), or a need or factual question nobody answered, even raised in passing"),
+                "BlaBlaCar), a need or factual question nobody answered, even raised in passing, or someone who "
+                "cannot remember a fact ('je ne me rappelle plus c'était quoi', 'c'était qui déjà ?')"),
         "none": ("no search helps: opinions, small talk, what only the team can know (its own decisions, budget, "
                  "people), travel mentioned only in passing, a line only reacting to what was said, or someone "
                  "saying what they will do themselves ('parfait, j'envoie un mail à l'équipe', 'je m'en occupe', "
@@ -49,7 +57,8 @@ WORK_QUESTION = {
 }
 ADDRESSED = 0.55  # live sessions: every line Jev scored 0.55-0.65 was for Kairos ("Tu disais quoi ?", "Merci beaucoup")
 WORK = 0.5  # the chosen search must be the likely one, and more likely than "none"
-TOPIC = 0.5  # a cheap filter: the writing model confirms every change (live, Jev scores shifts 0.57-0.76)
+TOPIC = 0.5
+FACT = 0.6  # a factual question to the room: its search result is owed to that line  # a cheap filter: the writing model confirms every change (live, Jev scores shifts 0.57-0.76)
 
 
 @dataclass(slots=True)
@@ -76,6 +85,7 @@ class Dispatcher:
         #: segment -> work handed out, known before the worker has finished taking it
         self.routing: dict[int, list[str]] = {}
         self._done: dict[int, int] = {}  # segment -> number of words already dispatched
+        self.facts: set[int] = set()  # lines asking the room a factual question: their result is owed
 
     def wants(self, segment: int, text: str, final: bool) -> bool:
         """Dispatch a line once when it ends with "?", and again when committed if it grew."""
@@ -112,12 +122,16 @@ class Dispatcher:
         if addressed:
             d.actions.append("réponse")
             self.on_addressed(segment)
-        work = max(("flights", "web", "none"), key=lambda option: p.get(option, 0.0))
+        if p.get("fact", 0.0) >= FACT:
+            self.facts.add(segment)
+        work = max(("flights", "hotels", "web", "none"), key=lambda option: p.get(option, 0.0))
         if work != "none" and p[work] >= WORK and p[work] > p.get("none", 0.0):
             if work == "flights":
                 # Tickets, a trip, its price: the flight worker (Jinko), asked for or not. It asks only what it
                 # cannot assume.
                 d.actions.append("vols")
+            elif work == "hotels":
+                d.actions.append("hôtels")  # Jinko's live rates, for the trip being discussed
             else:
                 # A restaurant, an address, a schedule, a fact, a train: the web worker, asked for or not. Asked
                 # for, it owes the reply ("je regarde", then the result); otherwise it is offered at a good pause.

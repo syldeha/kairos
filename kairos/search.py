@@ -153,7 +153,13 @@ class ExaSearch:
             '{"answer": "...", "used": [1, 2]}. The answer is one or two short spoken sentences (under 35 words) '
             f"in {language}, answering the question from the results only. Name places by their name (\"Le Grenier "
             "propose...\"); cite a source (\"selon Time Out\") only when it is a guide, a news or weather site distinct "
-            "from what it describes. No symbols, no URLs. If the results do not answer it, say so in one short sentence.",
+            "from what it describes. The question was said to Kairos, the assistant speaking: \"Kairos\" is who is "
+            "asked, never a place nor the subject (never \"Kairos propose\"); \"là-bas\" or \"there\" is the place in "
+            "the search query. Be concrete: name the specific places, neighbourhoods, venues or times the results "
+            "give (\"du fado dans l'Alfama, les bars du Bairro Alto\"), never generic activities (\"dîner, prendre "
+            "un verre\"). Answer exactly what was asked, the most common option first (\"how do we get from the "
+            "airport to the centre\": the metro, the bus, a taxi, with time and price, before private transfers). "
+            "No symbols, no URLs. If the results do not answer it, say so in one short sentence.",
             f"Question raised in the meeting: {question}\nSearch query: {query}\n\nResults:\n{evidence}",
             purpose="search summary", temperature=0.2)
         used = [int(i) - 1 for i in answer.get("used") or [] if str(i).isdigit() and 0 < int(i) <= len(results)]

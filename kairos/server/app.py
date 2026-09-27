@@ -36,7 +36,7 @@ from ..session import (FIXTURES, default_language, default_memory, load_memory, 
                        make_search, prime_ami)
 from ..sources.ami import DATA_DIR
 from ..sources.gradium import GradiumSource
-from ..travel import JinkoFlights
+from ..travel import JinkoFlights, JinkoHotels
 from ..voice import VOICES, EchoGuard, GradiumVoice
 
 WEB = PROJECT_ROOT / "web" / "index.html"
@@ -59,6 +59,7 @@ class StartRequest(BaseModel):
     voice_id: str = "iEu63s1rhn_kegTr"
     stt_delay_frames: int = 16  # Gradium's look-ahead, 80 ms each: lower is faster, higher is more accurate
     language: str | None = None  # "French" or "English"; None = the meeting's default
+    initiative: bool = True  # False: ideas, offers and unasked results only when someone speaks to Kairos
 
 
 class SayRequest(BaseModel):
@@ -83,6 +84,7 @@ class Session:
         timeline = load_timeline(req.source, req.anonymous)
         language = req.language if req.language in ("French", "English") else default_language(req.source)
         config = RunConfig(mode=req.mode, speed=max(req.speed, 0.5), language=language, role=req.role)
+        config.policy = replace(config.policy, initiative=req.initiative)
         if req.memory is not None:
             memory = [line.strip() for line in req.memory.splitlines() if line.strip()]
         else:
@@ -115,6 +117,8 @@ class Session:
                                initial_notes=notes, search=make_search(req.search, settings, llm),
                                live_source=live_source, voice=voice,
                                flights=JinkoFlights(settings.jinko_api_key, settings.jinko_url)
+                               if settings.jinko_api_key else None,
+                               hotels=JinkoHotels(settings.jinko_api_key, settings.jinko_url)
                                if settings.jinko_api_key else None)
         self.source, self.error = req.source, None
         self.task = asyncio.create_task(self._run())

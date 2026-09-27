@@ -155,7 +155,9 @@ def cosine(a: list[float], b: list[float]) -> float:
 
 
 def _sampling(model: str, temperature: float) -> dict:
-    """GPT-5 models reason before answering: turn that off for speed; they ignore temperature."""
+    """GPT-5 and later models reason before answering: turn that off for speed; they refuse a temperature."""
+    if model.startswith("gpt-6"):
+        return {"reasoning_effort": "none"}
     if model.startswith("gpt-5"):
         newer = not model.startswith(("gpt-5-", "gpt-5.0")) and model != "gpt-5"
         return {"reasoning_effort": "none" if newer else "minimal"}

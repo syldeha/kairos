@@ -18,6 +18,7 @@ import logging
 import os
 import sqlite3
 import time
+import wave
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from ..config import PROJECT_ROOT
 from ..server.app import Session, StartRequest
+from .memory import MeetingMemory
 from .project import PROJECT_ID, PROTOCOL_VERSION, Clock, now_utc, project
 from .protocol import AtlasState, SessionStatus, SessionSummary, new_id
 
@@ -41,10 +43,19 @@ LANGUAGES = {"fr": "French", "en": "English"}
 SAMPLE_RATE = 24_000
 #: No new audio for this long: Kairos's sentence is fully sent (it plays on in the page).
 END_OF_SPEECH_S = 0.45
+#: Gradium's look-ahead in 80 ms frames: more is more accurate and later (16 = 1.28 s, the console's advice).
+STT_DELAY_FRAMES = int(os.environ.get("KAIROS_STT_DELAY", "16"))
+#: Every session's microphone is kept here (as in the console) to replay it at other look-ahead settings.
+RECORDINGS = PROJECT_ROOT / "runs" / "voice"
 
 
 class RenameRequest(BaseModel):
     title: str = Field(min_length=1, max_length=80)
+
+
+class SayRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=600)
+    speaker: str | None = None  # another participant typing (e.g. "Claude" in a test scenario); default "Vous"
 
 
 class Store:
@@ -165,6 +176,9 @@ class Bridge:
         self.audio_frames = 0
         self.viewing: AtlasState | None = None  # a past session reopened from the library
         self._saved = 0.0
+        self._recording: wave.Wave_write | None = None
+        self.memory = MeetingMemory()  # notes and board, for the Notes and Board views
+        self.initiative = False  # a meeting by default: Kairos speaks when called, corrects, and answers
 
     # -- state --------------------------------------------------------------------------------------------
 
@@ -173,7 +187,7 @@ class Bridge:
             return self.viewing
         state = project(
             self.session.runtime, session_id=self.session_id, status=self.status, title=self.title,
-            language=self.language, clock=self.clock, audio_frames=self.audio_frames,
+            language=self.language, clock=self.clock, audio_frames=self.audio_frames, memory=self.memory,
         )
         if self.session.runtime is not None and self.session.task is not None and self.session.task.done():
             state.session_status = SessionStatus.CLOSED
@@ -193,17 +207,23 @@ class Bridge:
         }
 
     def saying(self) -> str:
+        """What the audio about to start says: an opener ("Alors…") or the sentence Kairos decided to say."""
         rt = self.session.runtime
-        if rt is None or not rt.interventions:
+        if rt is None:
             return ""
-        return rt.interventions[-1].planned
+        voice = rt.voice
+        cue = getattr(voice, "saying", "") if voice is not None else ""
+        if cue and voice is not None:
+            voice.saying = ""
+            return cue
+        return rt.interventions[-1].planned if rt.interventions else ""
 
     def send(self, message: dict[str, Any]) -> None:
         self.outbox.put_nowait(message)
 
     # -- commands -----------------------------------------------------------------------------------------
 
-    async def start(self, language: str, *, resume: AtlasState | None = None) -> None:
+    async def start(self, language: str, *, resume: AtlasState | None = None, initiative: bool | None = None) -> None:
         """A new meeting; resuming a past one, Kairos starts with what its notes remember."""
         await self.stop()
         memory = None
@@ -212,22 +232,31 @@ class Bridge:
             memory = "\n".join([f"Contexte de la réunion : {resume.title}", *remembered])
         self.viewing = None
         self.language = language if language in LANGUAGES else "fr"
+        if initiative is not None:
+            self.initiative = initiative  # kept for a resumed session
         self.session_id = new_id("session")
+        self.memory = MeetingMemory()
         self.title = "Nouvelle session"
         self.clock = Clock(now_utc())
         self.status = SessionStatus.STARTING
         await self.session.start(
             StartRequest(source="live", mode="open", judge="jev", search="exa", role="discreet", prime=False,
-                         voice=True, stt_delay_frames=16, language=LANGUAGES[self.language], memory=memory)
+                         voice=True, stt_delay_frames=STT_DELAY_FRAMES, initiative=self.initiative, language=LANGUAGES[self.language], memory=memory)
         )
         if self.session.runtime is not None and self.session.runtime.voice is not None:
             self.session.runtime.voice.sink = self.voice
+        self._record_start()
         self.status = SessionStatus.LISTENING
 
     async def stop(self) -> None:
+        self._record_stop()
         if self.session.runtime is None:
             return
         self.status = SessionStatus.FINALIZING
+        rt = self.session.runtime
+        if rt is not None and self.memory.cursor < sum(1 for s in rt.board.snapshot().transcript if s.final):
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(self.memory.update(rt, self.language), timeout=25)  # final notes
         await self.session.stop()
         self.status = SessionStatus.CLOSED
         final = self.state()
@@ -257,6 +286,24 @@ class Bridge:
         if rt is not None and rt.live_source is not None:
             rt.live_source.push_audio(pcm)
             self.audio_frames += 1
+            if self._recording is not None:
+                self._recording.writeframes(pcm)
+
+    def _record_start(self) -> None:
+        """24 kHz 16-bit mono WAV of the microphone, named after the session (runs/ is ignored by git)."""
+        self._record_stop()
+        RECORDINGS.mkdir(parents=True, exist_ok=True)
+        recording = wave.open(str(RECORDINGS / f"{time.strftime('%Y%m%d-%H%M%S')}-{self.session_id}.wav"), "wb")
+        recording.setnchannels(1)
+        recording.setsampwidth(2)
+        recording.setframerate(SAMPLE_RATE)
+        self._recording = recording
+
+    def _record_stop(self) -> None:
+        if self._recording is not None:
+            with contextlib.suppress(Exception):
+                self._recording.close()
+            self._recording = None
 
     def _title(self, state: AtlasState) -> str:
         if self.title != "Nouvelle session":
@@ -286,10 +333,20 @@ class Bridge:
                     last_partial = partial
                     await self._broadcast({"type": "transcript.partial", "text": partial})
                 await self._broadcast(snapshot)
+            rt = self.session.runtime
+            if rt is not None and rt.clock is not None and self.memory.due(rt):
+                asyncio.create_task(self._refresh_memory(rt))
             if self.session.runtime is not None and now - self._saved > 10:
                 self._saved = now
                 with contextlib.suppress(Exception):
                     self.store.save(self.state())
+
+    async def _refresh_memory(self, rt: Any) -> None:
+        try:
+            await self.memory.update(rt, self.language)
+        except Exception:
+            log.exception("notes and board update failed")
+        self.session.bump()
 
     async def _broadcast(self, message: dict[str, Any]) -> None:
         for socket in list(self.sockets):
@@ -329,6 +386,15 @@ def create_app(store: Store | None = None) -> FastAPI:
             "state": bridge.state().model_dump(mode="json"),
             "sessions": [item.model_dump(mode="json") for item in bridge.sessions()],
         }
+
+    @app.post("/api/say")
+    async def say(request: SayRequest) -> dict[str, bool]:
+        """A participant typing into the live meeting, at speech rate (as in Kairos's console): test scenarios
+        speak as "Claude" while the page shows the conversation."""
+        if bridge.session.runtime is None:
+            raise HTTPException(409, "Start a session first.")
+        await bridge.session.say(request.text.strip(), (request.speaker or "").strip() or None)
+        return {"ok": True}
 
     @app.patch("/v1/sessions/{session_id}")
     async def rename(session_id: str, request: RenameRequest) -> dict[str, bool]:
@@ -408,7 +474,8 @@ async def handle(bridge: Bridge, socket: WebSocket, text: str) -> None:
             await socket.send_json({"type": "protocol.error", "code": "PROTOCOL_MISMATCH",
                                     "message": f"Backend protocol {PROTOCOL_VERSION}. Reload the page."})
         elif kind == "session.start":
-            await bridge.start(str(message.get("language") or bridge.language))
+            await bridge.start(str(message.get("language") or bridge.language),
+                               initiative=bool(message.get("initiative", False)))
         elif kind == "session.command" and message.get("command") in {"stop", "pause"}:
             await bridge.stop()
         elif kind == "session.command" and message.get("command") == "resume":

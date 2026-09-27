@@ -71,3 +71,62 @@ def test_a_session_cut_by_a_restart_is_listed_as_closed(tmp_path: Any) -> None:
     reopened = Store(tmp_path / "sessions.db")
     [summary] = reopened.summaries()
     assert summary.status == SessionStatus.CLOSED and summary.title == "un voyage à Groningen"
+
+
+# -- Notes and Board, Atlas's method -----------------------------------------------------------------------
+
+def test_the_board_is_reconciled_from_a_desired_state_and_merges_only_with_proof():
+    from kairos.ui.memory import apply, reconcile
+    from kairos.ui.protocol import BoardProposal, Card
+    flight = Card(kind="finding", concept_key="flight_paris_lisbon", title="Vol", body="99 euros")
+    hotel = Card(kind="finding", concept_key="hotel_lisbon", title="Hôtel", body="Novotel")
+    budget = Card(kind="question", concept_key="budget", title="Budget ?", body="À fixer")
+    proposal = BoardProposal.model_validate({
+        "desired_cards": [
+            {"kind": "finding", "concept_key": "flight_paris_lisbon", "title": "Vol Paris Lisbonne",
+             "body": "Direct à 105 euros", "source_card_ids": [flight.id]},
+            {"kind": "finding", "concept_key": "stay", "title": "Séjour", "body": "Vol et hôtel",
+             "source_card_ids": [hotel.id, budget.id]},  # a merge with no evidence: refused
+            {"kind": "decision", "concept_key": "dates", "title": "Dates", "body": "Du 16 au 19 octobre",
+             "source_card_ids": []},
+        ],
+        "retirements": [],
+    })
+    cards = apply([flight, hotel, budget], reconcile([flight, hotel, budget], proposal))
+    by_key = {card.concept_key: card for card in cards}
+    assert by_key["flight_paris_lisbon"].body == "Direct à 105 euros" and by_key["flight_paris_lisbon"].id == flight.id
+    assert {"hotel_lisbon", "budget", "dates"} <= set(by_key)  # unproven merge kept both; the new concept added
+
+
+class NotesLLM:
+    def __init__(self):
+        self.calls = []
+
+    async def json(self, system, user, *, purpose, temperature=0.4):
+        self.calls.append(purpose)
+        if purpose == "meeting notes":
+            return {"synthesis": ["Trois amis préparent un week-end à Lisbonne."], "decisions": ["Partir le 16 octobre."],
+                    "findings": ["Vol direct Paris Lisbonne à 105 euros (Jinko)."], "participants": ["Claude", "Léa"]}
+        return {"desired_cards": [{"kind": "decision", "concept_key": "dates", "title": "Dates du week-end",
+                                   "body": "Du 16 au 19 octobre", "source_card_ids": []}], "retirements": []}
+
+
+def test_notes_and_board_follow_the_meeting_and_reach_the_interface():
+    import asyncio as aio
+    from kairos.board import Board
+    from kairos.contracts import Segment
+    from kairos.ui.memory import MeetingMemory
+
+    class Runtime:
+        def __init__(self):
+            self.board, self.llm = Board(), NotesLLM()
+            self.board.publish("transcript", tuple(Segment(i, "Claude", f"ligne {i}", i, i + 1, True) for i in range(3)))
+
+    rt, memory = Runtime(), MeetingMemory()
+    assert memory.due(rt)
+    aio.run(memory.update(rt, "fr"))
+    assert rt.llm.calls == ["meeting notes", "board", "board"]  # notes, board proposal, review
+    assert memory.cursor == 3 and memory.version == 1 and memory.cards[0].title == "Dates du week-end"
+    text = memory.markdown("fr")
+    assert "## Synthèse" in text and "## Décisions" in text and "- Partir le 16 octobre." in text
+    assert not memory.due(rt)  # nothing new since

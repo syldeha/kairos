@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 
-export type WorkspaceView = "flow" | "board" | "notes" | "transcript" | "monitor";
+export type WorkspaceView = "flow" | "chat" | "board" | "notes" | "transcript" | "monitor";
 
 type Item = {
   view: WorkspaceView;

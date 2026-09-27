@@ -45,6 +45,10 @@ class PolicyParams:
     correction_fit_min: float = 0.50  # judge: a correction's statement is compound (right, unsettled, useful now)
     clear_pick: float = 0.80          # Jev rater: a pick this clear, on the current line...
     clear_pick_fit_min: float = 0.50  # ...lowers the coherence bar to this: the two readings are weighed together
+    initiative: bool = True           # False: in a meeting, Kairos speaks up only when it is in the conversation
+    # Kairos is in the conversation if addressed within this many last lines. 3 let it answer the group's own
+    # question ("qu'est-ce qu'on fait sur place ?") right after it had been called: in a meeting, only the latest.
+    conversing_lines: int = 1
     follow_gap_s: float = 1.5         # after Kairos spoke, a thought Jev picks may follow once the pause is this long
     follow_pick_min: float = 0.55     # ...if picked at least this clearly
     follow_none_max: float = 0.30     # ...and Jev's "say nothing" is under this
@@ -58,6 +62,13 @@ def floor_open(snap: BoardSnapshot, p: PolicyParams) -> bool:
     if silence < p.min_gap_s:
         return False
     return room.p_silence[HORIZONS.index(1.0)] >= p.p_end or silence >= p.long_gap_s
+
+
+def in_conversation(snap: BoardSnapshot, p: PolicyParams) -> bool:
+    """Someone spoke to Kairos within the last few lines: it is part of the conversation, not a listener."""
+    humans = [s for s in snap.transcript if s.speaker != AI_NAME and s.final]
+    recent = {s.id for s in humans[-p.conversing_lines:]}
+    return snap.signals.addressed_segment is not None and snap.signals.addressed_segment in recent
 
 
 def may_follow(snap: BoardSnapshot, p: PolicyParams) -> bool:
@@ -139,6 +150,11 @@ def decide(snap: BoardSnapshot, p: PolicyParams = PolicyParams()) -> Decision:
                       and t.chosen > signals.rater_none and t.fit_now >= p.clear_pick_fit_min}
     usable = [t for t in active if (t.fit_now >= fit_bar(t, p) or t.id in clearly_picked)
               and t.already_said <= p.said_max and (current_line is None or t.judged_line == current_line)]
+    # People talking among themselves (a meeting): Kairos takes no initiative. Ideas, offers and results nobody
+    # asked for wait until someone speaks to Kairos; a checked correction and what is owed to a line still pass.
+    # In a live meeting test, offers and unasked results were said on 12 of 23 lines not meant for Kairos.
+    if not p.initiative and not in_conversation(snap, p):
+        usable = [t for t in usable if t.kind == "correction" or t.answers is not None]
     # A thought written before the conversation switched language is not said in the old language.
     spoken_now = language_of(max(humans, key=lambda s: s.t_start).text, None) if humans else None
     if spoken_now is not None:
@@ -222,7 +238,9 @@ def decide(snap: BoardSnapshot, p: PolicyParams = PolicyParams()) -> Decision:
 
 
 def _with_chain(decision: Decision, primary: Thought, usable: list[Thought], now: float, p: PolicyParams) -> Decision:
-    chain = [t for t in usable if t.status == ThoughtStatus.PENDING and t.id != primary.id
+    if primary.kind != "idea":
+        return decision  # an answer, a result, a correction or "je regarde" is said alone, never with an idea
+    chain = [t for t in usable if t.kind == "idea" and t.status == ThoughtStatus.PENDING and t.id != primary.id
              and t.topic != primary.topic and t.already_said <= p.said_max / 1.5
              and score(t, now, p) >= p.chain_threshold]
     if not chain:

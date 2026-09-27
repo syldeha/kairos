@@ -5,6 +5,7 @@ import {
   Columns3,
   FileText,
   MessageSquareText,
+  MessagesSquare,
   Send,
   Workflow,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import {
 } from "./api";
 import { AudioBridge, type CaptureMode } from "./audio";
 import { AtlasSubtitles } from "./components/AtlasSubtitles";
+import { ChatView } from "./components/ChatView";
 import { promptBarVisibleByDefault, savePromptBarVisibility } from "./preferences";
 import { MonitorView } from "./components/MonitorView";
 import { NotesView } from "./components/NotesView";
@@ -47,7 +49,9 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [view, setView] = useState<WorkspaceView>("flow");
   const [displayName, setDisplayName] = useState("Atlas");
-  const [captureMode, setCaptureMode] = useState<CaptureMode>("mixed");
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("microphone");
+  // Kairos in a meeting answers when called; in a one-to-one or a test it speaks as soon as a thought passes.
+  const [initiative, setInitiative] = useState(false);
   const [language, setLanguage] = useState<AtlasLanguage>("en");
   const [manual, setManual] = useState("");
   const [error, setError] = useState("");
@@ -211,12 +215,14 @@ function App() {
       if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error("Backend connection is not ready.");
       interruptPlayback();
       await startCapture();
-      send(socket, {
-        type: "session.start",
+      const startMessage = {
+        type: "session.start" as const,
         language,
         capture_mode: captureMode,
-        output_mode: "local_only",
-      });
+        output_mode: "local_only" as const,
+        initiative,
+      };
+      send(socket, startMessage as Parameters<typeof send>[1]);
     } catch (reason) {
       setAudioStatus("error");
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -338,6 +344,7 @@ function App() {
   const capturing = audioStatus === "active" || audioStatus === "requesting";
   const navigation: Array<{ view: WorkspaceView; label: string; icon: typeof Workflow }> = [
     { view: "flow", label: "Flow", icon: Workflow },
+    { view: "chat", label: "Chat", icon: MessagesSquare },
     { view: "board", label: "Board", icon: Columns3 },
     { view: "notes", label: "Notes", icon: FileText },
     { view: "transcript", label: "Transcript", icon: MessageSquareText },
@@ -394,6 +401,10 @@ function App() {
               <option value="mixed">Microphone + system audio</option>
               <option value="system">System audio</option>
             </select></label>
+            <label>Kairos<select value={initiative ? "active" : "called"} onChange={(event) => setInitiative(event.target.value === "active")}>
+              <option value="called">Speaks when called (meeting)</option>
+              <option value="active">Speaks when a thought passes the threshold</option>
+            </select></label>
            <button className="start" onClick={() => void start()}>New session</button>
           </div>
           {error && <p className="error">{error}</p>}
@@ -423,6 +434,7 @@ function App() {
           </section>
           <section className="view-stage">
               {view === "flow" && <WorkflowCanvas state={state} audioStatus={audioStatus} />}
+              {view === "chat" && <ChatView state={state} partial={partial} />}
               {view === "board" && <Board state={state} />}
               {view === "notes" && <NotesView state={state} />}
               {view === "transcript" && <Transcript state={state} partial={partial} />}

@@ -180,6 +180,7 @@ class GradiumVoice:
         if getattr(self, "_cues", None) is not None:
             return
         self._cues: list[bytes] = []
+        self._cue_texts: list[str] = []
         self._cue_turn = 0
         for text in CUES.get(self.language, CUES["English"]):
             try:
@@ -189,6 +190,7 @@ class GradiumVoice:
             pcm = _trim_silence(pcm)
             if pcm:
                 self._cues.append(pcm)
+                self._cue_texts.append(text)
 
     async def _synthesize(self, text: str) -> bytes:
         ws = await self._open()
@@ -204,18 +206,20 @@ class GradiumVoice:
         await ws.close()
         return pcm
 
-    async def cue(self) -> None:
+    async def cue(self) -> str:
         """Take the turn at once while the answer is being prepared ("Alors…", "Hmm, voyons…"): a person
         answering a question starts with a sound within half a second, not after three seconds of silence."""
         if self.sink is None or (self._task is not None and not self._task.done()):
-            return
+            return ""
         await self.prepare_cues()
         if not self._cues:
-            return
-        pcm = self._cues[self._cue_turn % len(self._cues)]  # a different one each time
+            return ""
+        turn = self._cue_turn % len(self._cues)  # a different one each time
         self._cue_turn += 1
-        self.sink.send_audio(pcm)
-        self._audio_end = max(self._audio_end, self.now()) + len(pcm) / BYTES_PER_S
+        self.saying = self._cue_texts[turn]  # what the audio about to start says (for subtitles)
+        self.sink.send_audio(self._cues[turn])
+        self._audio_end = max(self._audio_end, self.now()) + len(self._cues[turn]) / BYTES_PER_S
+        return self._cue_texts[turn]
 
     def wait_remaining(self) -> float:
         """Seconds of audio still to play (0 when silent), or while the audio is still being produced."""

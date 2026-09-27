@@ -885,3 +885,115 @@ def test_a_search_result_someone_waits_for_follows_kairos_at_once_but_an_idea_wa
     assert not after_kairos([idea], silence_s=2.0).speak  # a weak pick waits for a person
     clear = replace(idea, chosen=0.71)
     assert not after_kairos([clear], silence_s=1.0).speak and after_kairos([clear], silence_s=2.0).speak
+
+
+class FakeHotels:
+    def __init__(self):
+        self.searched = []
+
+    async def search(self, city, country, checkin, checkout, guests, min_stars=0):
+        from kairos.travel import HotelSummary
+        self.searched.append((city, country, checkin, checkout, guests))
+        return HotelSummary(city, checkin, checkout, 27, 279.0,
+                            ("- VIP Inn Berna Hotel: 3 stars, rated 8.3/10, 279 EUR in total (93 EUR a night)",), 3.8)
+
+
+class HotelLLM:
+    async def json(self, system, user, *, purpose, temperature=0.4):
+        if purpose == "brief result":
+            return {"say": "Le VIP Inn Berna, noté 8,3 sur 10, revient à 93 euros la nuit, 279 euros pour les trois nuits."}
+        return {"details": {"city": {"value": "Lisbonne (PT)", "source": "L1"},
+                            "checkin": {"value": "2026-10-17", "source": "L1"},
+                            "checkout": {"value": "2026-10-20", "source": "L1"},
+                            "guests": {"value": "2", "source": "L1"}}, "missing": [], "question": ""}
+
+
+def test_a_hotel_request_for_the_trip_is_searched_on_jinko_and_owed_to_the_person():
+    lines = [Segment(1, "Claude", "On part à Lisbonne du 17 au 20 octobre, on sera deux.", 0, 3, True),
+             Segment(2, "Léa", "Kairos, tu peux regarder les hôtels là-bas ?", 4, 6, True)]
+    board = board_with(transcript=lines)
+    hotels = FakeHotels()
+    sup = WorkerSupervisor(board, HotelLLM(), "French", hotels=hotels)
+
+    async def scenario():
+        await sup.open("hotels", 2, lines[1].text, addressed=True)
+        await sup.drain()
+
+    asyncio.run(scenario())
+    assert hotels.searched == [("Lisbonne", "PT", "2026-10-17", "2026-10-20", 2)]
+    result = {t.id: t for t in board.snapshot().thoughts}["rB1"]
+    assert result.answers == 2 and "93 euros la nuit" in result.utterance
+
+
+def test_a_city_jinko_does_not_know_by_that_name_is_retried_with_its_suggestion():
+    from kairos.travel import _suggested_city
+    low = httpx.Response(422, json={"error": {"code": "DESTINATION_LOW_CONFIDENCE", "suggested_retry": {
+        "destination": {"city_name": "Lisbon", "country_code": "PT"}}}})
+    assert _suggested_city(low) == {"city_name": "Lisbon", "country_code": "PT"}
+    assert _suggested_city(httpx.Response(422, json={"error": {"code": "BAD_REQUEST"}})) is None
+    assert _suggested_city(httpx.Response(200, json={"hotels": []})) is None
+
+
+def test_in_a_meeting_kairos_takes_no_initiative_until_someone_speaks_to_it():
+    from kairos.decide.policy import PolicyParams
+    meeting = PolicyParams(initiative=False)
+    line = Segment(6, "Marc", "Une ville avec un peu de soleil, j'aimerais bien Lisbonne.", 0, 3.0, True)
+    offer = replace(thought("q1", chosen=0.9, judged_line=6), kind="question", fit_now=0.9,
+                    utterance="Tu veux que je regarde les vols pour Lisbonne ?")
+    among_themselves = Signals(judged_segment=6, judged_words=10, rater_line=6, rater_none=0.05)
+    assert not decide(board_with([offer], [line], among_themselves).snapshot(), meeting).speak
+    fix = replace(thought("c1", chosen=0.9, judged_line=6, importance=5.0), kind="correction", fit_now=0.9)
+    assert decide(board_with([fix], [line], among_themselves).snapshot(), meeting).speak  # corrections pass
+    to_kairos = replace(among_themselves, addressed=0.9, addressed_segment=6, answered=True)
+    assert decide(board_with([offer], [line], to_kairos).snapshot(), meeting).speak  # in the conversation
+    assert decide(board_with([offer], [line], among_themselves).snapshot()).speak  # the console keeps initiative
+
+
+def test_a_factual_question_to_the_room_is_marked_but_a_question_among_friends_is_not():
+    async def open_work(kind, segment, text, is_addressed):
+        pass
+
+    d = Dispatcher(board_with(), FakeJev(search=0.9, fact=0.9), lambda s: None, open_work)
+    asyncio.run(d.run(4, "Au fait, qui a gagné la Coupe du monde cette année ?"))
+    friends = Dispatcher(board_with(), FakeJev(search=0.6, fact=0.2), lambda s: None, open_work)
+    asyncio.run(friends.run(5, "On prend un hôtel ou un appartement ?"))
+    assert d.facts == {4} and friends.facts == set()
+
+
+def test_a_result_already_said_in_one_copy_is_not_given_again():
+    from kairos.agents.workers import Brief
+    board = board_with(transcript=[Segment(9, "Vous", "Tu disais quoi pour les hôtels ?", 0, 2, True)])
+    first = replace(thought("rB3"), status=ThoughtStatus.STALE, kind="finding")  # set aside before being said
+    said = replace(thought("rB3a226"), status=ThoughtStatus.SPOKEN, kind="finding")  # its copy was said
+    board.publish("thoughts", (first, said))
+    sup = WorkerSupervisor(board, HotelLLM(), "French", hotels=FakeHotels())
+    recent = Brief(id="B3", kind="hotels", segment=5, line="les hôtels là-bas", addressed=True, created_at=0.0,
+                   status="done")
+    sup._repeat_unsaid_result(recent, 9)
+    assert {t.id for t in board.snapshot().thoughts} == {"rB3", "rB3a226"}  # nothing new to say again
+
+
+def test_a_five_star_request_keeps_only_five_star_hotels():
+    import asyncio as aio
+    from kairos.travel import JinkoHotels
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            def hotel(name, stars, price):
+                return {"name": name, "star_rating": stars, "rating": 8.5,
+                        "rooms": [{"rates": [{"total_amount": price, "board_name": "Room Only"}]}]}
+            return {"hotels": [hotel("Ibis", 3, 256), hotel("Tivoli", 5, 610), hotel("Pestana", 5, 540)]}
+
+    class Client:
+        async def post(self, url, headers, json):
+            return Response()
+
+    hotels = JinkoHotels("key")
+    hotels._client = Client()
+    summary = aio.run(hotels.search("Lisbon", "PT", "2026-10-02", "2026-10-04", 2, min_stars=5))
+    assert summary.cheapest_eur == 540 and all("Ibis" not in line for line in summary.lines)

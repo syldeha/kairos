@@ -97,7 +97,7 @@ class Runtime:
     def __init__(self, timeline: Timeline | None, memory: list[str], llm: LLM, judge: Judge,
                  config: RunConfig = RunConfig(), on_change: Callable[[], None] | None = None,
                  initial_notes: str = "", search: SearchProvider | None = None,
-                 live_source=None, voice=None, flights=None) -> None:
+                 live_source=None, voice=None, flights=None, hotels=None) -> None:
         if config.mode not in MODES:
             raise ValueError(f"mode must be one of {MODES}")
         if timeline is None and config.speed == 0:
@@ -129,10 +129,12 @@ class Runtime:
             self.thinkers.request_research = self._request_research
         # Version 2: Jev dispatches work on each sentence; workers fill briefs, ask the room, and bring results.
         self.supervisor = WorkerSupervisor(self.board, llm, config.language, flights=flights,
-                                           researcher=self.researcher, search=search)
+                                           researcher=self.researcher, search=search, hotels=hotels)
         self.thinkers.work_status = self.supervisor.status_text
         self.dispatcher = (Dispatcher(self.board, judge, self._open_question, self._open_work, self._on_topic)
                            if hasattr(judge, "ask") else None)
+        if self.dispatcher is not None:
+            self.supervisor.room_questions = self.dispatcher.facts  # Jev's factual questions to the room
         # What the room talks about now: Jev notices a change of subject, the writing model names it.
         self.topic = TopicTracker(self.board, llm, config.language) if self.dispatcher else None
         self._topic_task: asyncio.Task | None = None
@@ -147,6 +149,7 @@ class Runtime:
         self.harness = Harness(config.harness)
         self.decisions: dict[float | None, Decision] = {}
         self.decision_log: list[Decision] = []
+        self.cues: list[tuple[float, int, str]] = []  # (meeting time, line, opener) said while an answer was prepared
         self._last_why = ""
         self.interventions: list[Intervention] = []
         self.finished = False
@@ -527,7 +530,7 @@ class Runtime:
                 and self._surely_addressed(signals.addressed_segment)):
             # Asked something, answer not ready: take the turn at once ("Alors…"), the answer follows.
             self._cued.add(signals.addressed_segment)
-            asyncio.create_task(self.voice.cue())
+            asyncio.create_task(self._cue(snap.room.t, signals.addressed_segment))
         if floor_open(snap, self.config.policy):
             gap = snap.room.silence_since
             previous = self.decisions.get(gap)
@@ -585,6 +588,14 @@ class Runtime:
         self.supervisor.on_spoken(outcome.said)  # a question for the room was asked: its brief waits for answers
         await self._retire(said_in_full, KAIROS_SAID, f"déjà dit par Kairos à {intervention.t:.0f} s")
         self._on_change()
+
+    async def _cue(self, t: float, segment: int) -> None:
+        """The opener said while the answer is prepared, kept so that the console and tests see it."""
+        text = await self.voice.cue()
+        if text:
+            self.cues.append((t, segment, text))
+            del self.cues[:-100]
+            self._on_change()
 
     def _after_cut(self, cut_ids: list[str]) -> None:
         """Someone talked over Kairos and went on: what they said changes what Kairos should say. Its own cut
