@@ -1,0 +1,16 @@
+# Secrets
+.env
+
+# Your meetings: voice recordings, replays, benchmark outputs
+runs/
+
+# Downloaded data (AMI corpus; see README)
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/

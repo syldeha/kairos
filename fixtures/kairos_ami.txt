@@ -1,0 +1,9 @@
+# Kairos's long-term memory for the AMI remote-control design meetings (one line = one memory).
+# Based on the project brief given to the AMI scenario teams.
+The team is designing a new television remote control for the company Real Reaction.
+The remote control should sell for 25 euros.
+The production cost must stay at or below 12.50 euros per unit.
+The profit target for the project is 50 million euros.
+The remote is for television only; teletext is considered outdated and should not be included.
+The company's corporate colour and slogan must be recognisable in the design.
+The product is aimed at the international market.

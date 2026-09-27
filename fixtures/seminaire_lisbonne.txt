@@ -1,0 +1,16 @@
+# Réunion fictive : Inès (RH) et Hugo (manager) organisent le séminaire d'équipe. Vous êtes le/la troisième participant·e.
+# Les blancs longs (+4 à +6 s) vous laissent la place de parler dans la console.
+# Kairos connaît des contraintes qu'Inès et Hugo oublient (voir kairos_seminaire.txt), et peut chercher sur le web.
+# Format : +N  Nom: texte   (N = secondes de silence avant la phrase ; négatif = chevauchement)
++0.5  Inès: Bon, on doit caler le séminaire de mai. Hugo, tu avais une idée de destination ?
++0.6  Hugo: Oui, je pensais à Lisbonne. Il fait beau, ce n'est pas trop cher, et tout le monde a envie d'y aller.
++0.8  Inès: Lisbonne, ça me va. On serait combien, une vingtaine ?
++4.0  Hugo: Ça fait combien de temps de vol depuis Paris, déjà ?
++5.0  Inès: Pour l'hôtel, je verrais bien un truc dans l'Alfama, c'est joli avec les petites ruelles.
++0.4  Hugo: Ah oui, l'Alfama c'est super, avec les escaliers et la vue sur le Tage.
++4.5  Inès: Côté budget, on a quinze mille euros si je me souviens bien.
++0.7  Hugo: Avec quinze mille on peut se faire plaisir, je proposerais même un dîner dans un bon restaurant.
++5.0  Hugo: Et pour l'activité, une matinée de surf ? Ça souderait l'équipe.
++0.5  Inès: Le surf, carrément ! En mai l'eau doit être bonne.
++5.0  Inès: Bon, on part sur Lisbonne, l'Alfama et le surf. Tout le monde prend l'avion le 14 au matin ?
++5.0  Hugo: Parfait, j'envoie un mail à l'équipe cet après-midi.

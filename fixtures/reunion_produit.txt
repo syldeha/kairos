@@ -1,0 +1,14 @@
+# Réunion produit fictive pour tester Kairos : prix de l'abonnement et date de la bêta.
+# Format : +N  Nom: texte   (N = secondes de silence avant la phrase ; négatif = chevauchement)
++0.5  Camille: Bon, on a deux sujets aujourd'hui, le prix de l'abonnement et la date de la bêta.
++0.4  Camille: Côté prix, je partirais sur quinze euros par mois, on a beaucoup de fonctionnalités en plus.
++0.8  Léa: Quinze euros, c'est pas un peu cher pour des étudiants ?
++0.3  Camille: Les étudiants ne sont pas notre cible principale, plutôt les petites équipes.
++1.2  Karim: Ok. Et pour la bêta, mars c'est serré, on n'a toujours pas les retours du test utilisateurs.
++0.2  Léa: Mm.
++0.6  Karim: Sans ces retours, on risque de figer un périmètre qui ne tient pas.
++-0.3 Camille: Oui mais si on attend avril, on rate le salon de Lyon.
++1.5  Léa: Kairos, tu te souviens quand les retours du test doivent arriver ?
++2.0  Karim: En attendant, je propose qu'on fige le périmètre de la bêta vendredi.
++0.5  Camille: D'accord, vendredi pour le périmètre.
++0.7  Léa: Et on reparle du prix la semaine prochaine, avec les chiffres des concurrents.

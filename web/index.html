@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kairos · console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@600;700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#F2F4F3; --surface:#FFFFFF; --sunk:#E7ECEA; --ink:#16201D; --muted:#56635F; --line:#D3DBD8;
+  --accent:#0F6E6A; --accent-soft:#DCEFED; --amber:#9A6A00; --amber-soft:#F8EDCF; --grey:#8A9591;
+  --human:#6B5BA8; --you:#A8672B; --bad:#8E1E14; --bad-soft:#FBE4E1;
+  --display:"Archivo Narrow","Arial Narrow",Arial,sans-serif;
+  --body:"Source Sans 3","Segoe UI",Helvetica,Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme:dark;
+    --bg:#0E1412; --surface:#151D1A; --sunk:#1C2622; --ink:#E2EAE7; --muted:#95A49F; --line:#2B3833;
+    --accent:#56BDB5; --accent-soft:#16312E; --amber:#E2B34A; --amber-soft:#33290F; --grey:#6C7874;
+    --human:#A99AE6; --you:#E0A064; --bad:#F08A7E; --bad-soft:#3A1C19;
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);display:grid;grid-template-rows:auto auto 1fr}
+header{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line)}
+header h1{font:700 1.35rem var(--display);margin:0 8px 0 0}
+label{font-size:.8rem;color:var(--muted);display:flex;gap:6px;align-items:center}
+select,input[type=number],input[type=text]{font:inherit;font-size:.9rem;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+button{font:600 .88rem var(--body);padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+button.pri{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.status{margin-left:auto;font:600 .78rem var(--mono);color:var(--muted)}
+main{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;padding:14px 16px;min-height:0}
+.col{display:grid;gap:12px;align-content:start;min-height:0}
+.left{grid-template-rows:1fr auto;height:calc(100vh - 80px)}
+.right{overflow:auto;height:calc(100vh - 80px);padding-right:4px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:8px}
+.card h2{font:700 1rem var(--display);margin:0;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.card h2 small{font:400 .75rem var(--mono);color:var(--muted)}
+#transcript{overflow:auto;display:grid;gap:8px;align-content:start;padding-right:6px}
+.line{display:grid;grid-template-columns:52px 1fr;gap:8px}
+.line .t{font:400 .75rem var(--mono);color:var(--muted);padding-top:3px;font-variant-numeric:tabular-nums}
+.line .who{font:600 .78rem var(--mono);color:var(--human)}
+.line.ai .body{background:var(--accent-soft);border-left:3px solid var(--accent);padding:4px 8px;border-radius:0 6px 6px 0}
+.line.ai .who{color:var(--accent)}
+.line.live .who{color:var(--you)}
+.line.partial .txt{color:var(--muted);font-style:italic}
+.say{display:flex;gap:8px}
+.say input{flex:1}
+.hint{font-size:.78rem;color:var(--muted)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pill{font:600 .7rem var(--mono);padding:2px 8px;border-radius:99px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.on{background:var(--accent);color:var(--surface)}
+.pill.ready{background:var(--accent-soft);color:var(--accent)}
+.pill.pending{background:var(--amber-soft);color:var(--amber)}
+.pill.spoken{background:var(--sunk);color:var(--accent)}
+.pill.stale{background:var(--sunk);color:var(--grey)}
+.pill.yes{background:var(--accent);color:var(--surface)}
+.gauges{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.gauge{display:grid;gap:3px;font:400 .72rem var(--mono);color:var(--muted)}
+.bar{height:7px;background:var(--sunk);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.bar.amber i{background:var(--amber)}
+.bar.grey i{background:var(--grey)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:.86rem}
+.kv span:nth-child(odd){color:var(--muted)}
+.kv span:nth-child(even){font-family:var(--mono);font-size:.8rem;font-variant-numeric:tabular-nums}
+.speech{font-size:.95rem;border-left:3px solid var(--accent);padding-left:8px;min-height:1.4em}
+table{border-collapse:collapse;width:100%;font-size:.84rem}
+th,td{text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 .66rem var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+td.n{font-family:var(--mono);font-size:.78rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+td .mini{display:grid;grid-template-columns:34px 1fr;gap:4px;align-items:center;font:400 .7rem var(--mono);color:var(--muted)}
+.tablewrap{overflow-x:auto}
+ul.log{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:.84rem}
+ul.log li{display:grid;grid-template-columns:52px 1fr;gap:8px}
+ul.log .t{font:400 .75rem var(--mono);color:var(--muted)}
+ul.log .yes{color:var(--accent);font-weight:600}
+.iv{display:grid;gap:2px;padding:6px 0;border-bottom:1px solid var(--line);font-size:.86rem}
+.iv:last-child{border-bottom:0}
+.iv .meta{font:400 .74rem var(--mono);color:var(--muted)}
+.iv .bad{color:var(--bad)}
+.notes{white-space:pre-wrap;font-size:.84rem;max-height:260px;overflow:auto}
+.metrics{display:flex;flex-wrap:wrap;gap:6px 16px;font:400 .78rem var(--mono);color:var(--muted)}
+.metrics b{color:var(--ink);font-weight:600}
+.setup{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px;padding:10px 16px;background:var(--surface);border-bottom:1px solid var(--line)}
+.setup label{display:grid;gap:4px;align-items:start}
+.setup textarea,.setup input{font:inherit;font-size:.88rem;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);width:100%}
+.setup textarea{min-height:64px;resize:vertical}
+@media (max-width:900px){.setup{grid-template-columns:1fr}}
+.error{background:var(--bad-soft);color:var(--bad);padding:8px 12px;border-radius:6px;font-size:.88rem}
+.empty{color:var(--muted);font-size:.86rem}
+@media (max-width:900px){
+  main{grid-template-columns:1fr}
+  .left,.right{height:auto}
+  #transcript{max-height:60vh}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Kairos</h1>
+  <label for="source">Réunion <select id="source"></select></label>
+  <label for="mode">Mode
+    <select id="mode">
+      <option value="closed">boucle fermée · la salle attend Kairos</option>
+      <option value="open">boucle ouverte · on peut lui couper la parole</option>
+      <option value="offline">hors ligne · décisions seulement</option>
+    </select>
+  </label>
+  <label for="speed">Vitesse <input id="speed" type="number" min="0.5" max="4" step="0.5" value="1" style="width:64px"></label>
+  <label for="role">Rôle <select id="role"><option value="discreet">assistant discret</option><option value="active">participant actif</option></select></label>
+  <label for="judge">Juge <select id="judge"><option value="jev">Jev (Vercel), secours LLM</option><option value="llm">LLM (logprobs)</option></select></label>
+  <label for="search">Recherche web <select id="search"><option value="openai">OpenAI</option><option value="tavily">Tavily</option><option value="off">désactivée</option></select></label>
+  <label for="anon"><input id="anon" type="checkbox"> un seul micro</label>
+  <label for="voice"><input id="voice" type="checkbox"> voix (Gradium)</label>
+  <label for="sttdelay">Écoute avant transcription <select id="sttdelay">
+    <option value="10">0,8 s · rapide</option><option value="16" selected>1,3 s · conseillé</option>
+    <option value="24">1,9 s · précis</option><option value="32">2,6 s</option><option value="48">3,8 s · très précis</option>
+  </select></label>
+  <label for="voiceid">Voix <select id="voiceid">
+    <option value="iEu63s1rhn_kegTr">Gaspard</option><option value="6oIkS98REoVZ1dEw">Apolline</option>
+    <option value="YKeBw3OV1RgpdhLh">Jules</option><option value="YhIHaAfQ0cQPDV9R">Solène</option>
+  </select></label>
+  <button class="pri" id="start" type="button">Démarrer</button>
+  <button id="stop" type="button">Arrêter</button>
+  <span class="status" id="status">déconnecté</span>
+</header>
+
+<section class="setup" aria-label="Avant de démarrer">
+  <label for="context">Contexte de la réunion
+    <input id="context" type="text" placeholder="Ex. : je prépare un voyage cet hiver, petit budget">
+  </label>
+  <label for="memory">Ce que Kairos sait avant de commencer (une ligne par souvenir, modifiable)
+    <textarea id="memory" placeholder="Vide : Kairos part sans mémoire. Ex. : Mon budget total est de 600 €."></textarea>
+  </label>
+</section>
+
+<main>
+  <section class="col left" aria-label="Réunion">
+    <div class="card" style="min-height:0;grid-template-rows:auto 1fr">
+      <h2>Réunion <small id="clock">0,0 s</small></h2>
+      <div id="transcript"><p class="empty">Choisissez une réunion puis cliquez sur Démarrer.</p></div>
+    </div>
+    <div class="card">
+      <form class="say" id="sayform">
+        <input id="say" type="text" autocomplete="off" placeholder="Parler dans la réunion (par ex. « Kairos, quand arrivent les retours du test ? »)">
+        <button class="pri" type="submit">Dire</button>
+      </form>
+      <span class="hint">Vos mots arrivent au rythme de la parole. En boucle ouverte, écrire pendant que Kairos parle lui coupe la parole ; « mm » ou « oui » ne l'arrête pas.</span>
+      <div id="voicebox" hidden>
+        <div class="kv"><span>Micro</span><span id="voicestate">—</span></div>
+        <div class="bar" title="niveau du micro"><i id="miclevel" style="width:0%"></i></div>
+        <span class="hint">Mode vocal : parlez normalement, Kairos répond à voix haute. Mettez un casque : sans casque, Kairos s'entend et la détection se trompe plus souvent. Plusieurs personnes autour d'un micro : cochez « un seul micro ».</span>
+      </div>
+      <div id="error" class="error" hidden></div>
+    </div>
+  </section>
+
+  <section class="col right" aria-label="Tête de Kairos">
+    <div class="card">
+      <h2>Salle <small id="roomstate"></small></h2>
+      <div class="gauges" id="gauges"></div>
+      <div class="kv" id="roomkv"></div>
+    </div>
+    <div class="card">
+      <h2>Latence <small>où passe le temps</small></h2>
+      <div id="latency" class="empty">Les mesures apparaissent à la première intervention.</div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Sous-agent</th><th>Appels</th><th>Moyenne</th><th>Dernier</th><th>Max</th></tr></thead>
+        <tbody id="timings"></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Kairos <small id="aistate"></small></h2>
+      <div class="speech" id="speech"></div>
+      <div class="metrics" id="metrics"></div>
+    </div>
+    <div class="card">
+      <h2>Réservoir de pensées <small id="raterinfo">choix de Jev · sinon score = importance × pertinence × fraîcheur</small></h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Pensée</th><th>Statut</th><th>Imp.</th><th>Juge</th><th>Jev / score</th></tr></thead>
+        <tbody id="thoughts"><tr><td colspan="5" class="empty">Aucune pensée pour l'instant.</td></tr></tbody>
+      </table></div>
+      <details class="hint" open><summary>Journal du réservoir : qui a ajouté, mis de côté ou retiré quoi, et pourquoi</summary>
+        <div id="reslog" class="empty">Rien pour l'instant.</div>
+      </details>
+    </div>
+    <div class="card">
+      <h2>Aiguillage <small>Jev lit chaque phrase et lance le travail</small></h2>
+      <div id="dispatch" class="empty">Aucune phrase aiguillée pour l'instant.</div>
+    </div>
+    <div class="card">
+      <h2>Flux <small>de la phrase au résultat dit : où le temps passe, où ça casse</small></h2>
+      <div id="flows" class="empty">Aucune demande pour l'instant.</div>
+    </div>
+    <div class="card">
+      <h2>Travaux <small>ce que les workers cherchent, et ce qu'il leur manque</small></h2>
+      <div id="briefs" class="empty">Aucun travail en cours.</div>
+    </div>
+    <div class="card">
+      <h2>Recherches web <small>préparées en arrière-plan</small></h2>
+      <div id="findings" class="empty">Aucune recherche pour l'instant.</div>
+    </div>
+    <div class="card">
+      <h2>Interventions</h2>
+      <div id="interventions" class="empty">Kairos ne s'est pas encore exprimé.</div>
+    </div>
+    <div class="card">
+      <h2>Décisions aux derniers blancs</h2>
+      <ul class="log" id="decisions"></ul>
+    </div>
+    <div class="card">
+      <h2>Notes de réunion <small>mémoire courte</small></h2>
+      <div class="notes" id="notes">—</div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fr = (x, d = 2) => Number(x).toFixed(d).replace(".", ",");
+const KIND = {question: "question à la salle", finding: "trouvaille", correction: "correction", answer: "réponse"};
+const STATUS = {ready: "prête", pending: "en attente", spoken: "dite", stale: "obsolète", draft: "brouillon"};
+const MOMENT = {"turn change": "changement de tour", "same speaker's pause": "pause du même locuteur",
+                "end of meeting": "fin de réunion", "during speech": "pendant que quelqu'un parle"};
+
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || r.statusText); }
+  return r.json();
+}
+function showError(msg) { $("error").hidden = !msg; $("error").textContent = msg || ""; }
+
+async function loadSources() {
+  const list = await (await fetch("/api/sources")).json();
+  $("source").innerHTML = list.map(s => `<option value="${esc(s.id)}">${esc(s.label)}</option>`).join("");
+  await loadMemory();
+}
+async function loadMemory() {
+  // Prefill with the memory that goes with this meeting; "Direct" starts empty. Editable before starting.
+  const r = await fetch("/api/memory?source=" + encodeURIComponent($("source").value));
+  $("memory").value = (await r.json()).memory || "";
+}
+$("source").onchange = () => loadMemory().catch(e => showError(e.message));
+
+// -- voice: microphone to Gradium (through the server), Kairos's voice back --------------
+const MIC_WORKLET = `
+class Mic extends AudioWorkletProcessor {
+  constructor() { super(); this.ratio = sampleRate / 24000; this.pos = 0; this.buf = new Int16Array(1920); this.n = 0; }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (!ch) return true;
+    for (; this.pos < ch.length; this.pos += this.ratio) {   // resample to 24 kHz (linear)
+      const k = Math.floor(this.pos), f = this.pos - k, a = ch[k], b = k + 1 < ch.length ? ch[k + 1] : a;
+      const v = Math.max(-1, Math.min(1, a + (b - a) * f));
+      this.buf[this.n++] = v < 0 ? v * 32768 : v * 32767;
+      if (this.n === 1920) { this.port.postMessage(this.buf.buffer.slice(0)); this.n = 0; }  // 80 ms
+    }
+    this.pos -= ch.length;
+    return true;
+  }
+}
+registerProcessor("mic", Mic);`;
+let audio = null;
+
+async function startAudio() {
+  stopAudio();
+  // Echo cancellation stays (Kairos's voice); the browser's noise suppression is off: it distorts speech,
+  // and Gradium is trained on real, noisy audio.
+  const stream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: false,
+    autoGainControl: true, channelCount: 1}});
+  const ctx = new AudioContext();
+  await ctx.resume();
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([MIC_WORKLET], {type: "application/javascript"})));
+  const node = new AudioWorkletNode(ctx, "mic");
+  const mute = ctx.createGain(); mute.gain.value = 0;   // keeps the worklet running, never plays the mic
+  // Anti-aliasing before going down to 24 kHz: nothing above 11 kHz may fold back into the speech band.
+  const lowpass = [0, 1].map(() => { const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 10500; f.Q.value = 0.707; return f; });
+  ctx.createMediaStreamSource(stream).connect(lowpass[0]); lowpass[0].connect(lowpass[1]); lowpass[1].connect(node);
+  node.connect(mute).connect(ctx.destination);
+  const ws = new WebSocket(`ws://${location.host}/ws/audio`);
+  ws.binaryType = "arraybuffer";
+  audio = {ctx, stream, node, ws, next: 0, playing: [], loud: 0};
+  node.port.onmessage = e => {
+    if (ws.readyState === 1) ws.send(e.data);
+    const pcm = new Int16Array(e.data); let sum = 0;
+    for (let i = 0; i < pcm.length; i += 8) sum += (pcm[i] / 32768) ** 2;
+    const rms = Math.sqrt(sum / (pcm.length / 8));
+    $("miclevel").style.width = Math.min(100, rms * 400) + "%";
+    // Barge-in in the page (Meeting Sidecar's pattern): someone talks over Kairos, the audio stops at once,
+    // before any network round trip; the server is told so Kairos stops its words too.
+    audio.loud = audio.playing.length && rms > 0.045 ? audio.loud + 1 : 0;
+    if (audio.loud === 2) { stopPlayback(); if (ws.readyState === 1) ws.send(JSON.stringify({type: "barge_in"})); }
+  };
+  ws.onmessage = e => {
+    if (typeof e.data === "string") { if (JSON.parse(e.data).type === "stop") stopPlayback(); return; }
+    play(e.data);
+  };
+  ws.onclose = e => { if (audio && audio.ws === ws && e.reason) showError(e.reason); };
+}
+function play(data) {
+  const pcm = new Int16Array(data), ctx = audio.ctx;
+  const buffer = ctx.createBuffer(1, pcm.length, 24000), ch = buffer.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+  const src = ctx.createBufferSource();
+  src.buffer = buffer; src.connect(ctx.destination);
+  const at = Math.max(ctx.currentTime + 0.03, audio.next);
+  src.start(at); audio.next = at + buffer.duration;
+  audio.playing.push(src);
+  src.onended = () => { if (audio) audio.playing = audio.playing.filter(s => s !== src); };
+}
+function stopPlayback() {   // Kairos was cut off: silence at once
+  if (!audio) return;
+  for (const s of audio.playing) { try { s.stop(); } catch (_) {} }
+  audio.playing = []; audio.next = 0;
+}
+function stopAudio() {
+  if (!audio) return;
+  stopPlayback();
+  try { audio.ws.close(); } catch (_) {}
+  audio.stream.getTracks().forEach(t => t.stop());
+  audio.ctx.close();
+  audio = null;
+  $("miclevel").style.width = "0%";
+}
+$("voice").onchange = () => {
+  $("voicebox").hidden = !$("voice").checked;
+  if ($("voice").checked) { $("source").value = "live"; loadMemory().catch(() => {}); }
+};
+
+$("start").onclick = async () => {
+  showError("");
+  try {
+    stopAudio();
+    const voice = $("voice").checked;
+    await post("/api/start", {source: $("source").value, mode: $("mode").value,
+      speed: parseFloat($("speed").value) || 1, judge: $("judge").value, search: $("search").value, role: $("role").value,
+      context: $("context").value, memory: $("memory").value,
+      anonymous: $("anon").checked, voice, voice_id: $("voiceid").value,
+      stt_delay_frames: parseInt($("sttdelay").value, 10)});
+    if (voice) await startAudio();
+  } catch (e) { showError(e.message); }
+};
+$("stop").onclick = () => { stopAudio(); post("/api/stop").catch(e => showError(e.message)); };
+$("sayform").onsubmit = async ev => {
+  ev.preventDefault();
+  const text = $("say").value.trim();
+  if (!text) return;
+  try { await post("/api/say", {text}); $("say").value = ""; showError(""); } catch (e) { showError(e.message); }
+};
+
+function bar(value, cls = "") {
+  const w = Math.max(0, Math.min(1, value)) * 100;
+  return `<div class="bar ${cls}"><i style="width:${w}%"></i></div>`;
+}
+
+function render(s) {
+  if (s.judge && s.judge.name === "jev") {
+    const a = s.judge.answered || {};
+    $("status").title = `Juge Jev : ${a.jev || 0} réponses de Jev, ${a.llm || 0} du juge de secours`;
+    if (s.judge.error && a.llm) showError(`Jev indisponible, le juge LLM prend le relais : ${s.judge.error}`);
+  }
+  if (s.voice) {
+    const v = s.voice;
+    $("voicebox").hidden = false;
+    $("voicestate").textContent = v.error ? v.error
+      : `${v.connected ? "Gradium connecté" : "connexion à Gradium…"} · ${v.listening ? "écoute" : "micro pas encore reçu"} · voix ${v.name}`
+        + (v.stt_lag_s != null ? ` · transcription ${fr(v.stt_lag_s)} s après le mot` : "")
+        + (v.commit_s != null ? ` · phrase close ${fr(v.commit_s)} s après la fin` : "")
+        + (v.first_audio_mean_s != null ? ` · 1er son de Kairos ${fr(v.first_audio_mean_s)} s après la décision` : "");
+  }
+  $("status").textContent = s.running ? `en cours · ${s.mode}` : (s.finished ? "terminé" : "à l'arrêt");
+  if (s.error) showError(s.error);
+  if (!s.transcript) return;
+  $("clock").textContent = `${fr(s.t, 1)} s` + (s.offset ? ` · la salle a attendu ${fr(s.offset, 1)} s` : "");
+
+  const box = $("transcript");
+  const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  box.innerHTML = s.transcript.map(l => `
+    <div class="line ${l.ai ? "ai" : ""} ${l.live ? "live" : ""} ${l.final ? "" : "partial"}">
+      <span class="t">${fr(l.t, 1)}</span>
+      <div class="body"><span class="who">${esc(l.speaker)}</span> <span class="txt">${esc(l.text)}${l.final ? "" : " …"}</span>${l.raw ? ` <span class="pill" title="Entendu : ${esc(l.raw)}">corrigé</span>` : ""}</div>
+    </div>`).join("") || `<p class="empty">En attente des premiers mots…</p>`;
+  if (stick) box.scrollTop = box.scrollHeight;
+
+  const H = ["0,5 s", "1 s", "2 s", "3 s"];
+  $("gauges").innerHTML = s.room.p.map((p, i) => `<div class="gauge">P(silence ${H[i]}) ${fr(p)}${bar(p, "amber")}</div>`).join("");
+  $("roomstate").innerHTML = s.room.speaking ? `<span class="pill on">quelqu'un parle</span>` : `<span class="pill">silence ${fr(s.room.silence, 1)} s</span>`;
+  const sig = s.signals;
+  $("roomkv").innerHTML = `<span>Dernier locuteur</span><span>${esc(s.room.last || "—")}</span>
+    <span>Sujet</span><span>${esc(sig.topic || "—")}</span>
+    <span>Question à Kairos</span><span>${sig.addressed_segment != null && !sig.answered ? "L" + sig.addressed_segment + " en attente de réponse" : "aucune"}</span>`;
+
+  $("aistate").innerHTML = s.ai.speaking ? `<span class="pill on">parle</span>` : `<span class="pill">écoute</span>`;
+  $("speech").textContent = s.ai.speaking ? s.ai.text + " …" : (s.ai.text ? "Dernière intervention : " + s.ai.text : "—");
+  const m = s.metrics;
+  $("metrics").innerHTML = `<span>interventions <b>${s.ai.interventions}</b></span>
+    <span>part de parole <b>${fr(s.ai.share * 100, 0)} %</b></span>
+    <span>dans un blanc naturel <b>${m.in_natural_gap}</b></span>
+    <span>latence moy. <b>${m.mean_latency_s == null ? "—" : fr(m.mean_latency_s) + " s"}</b></span>
+    <span>coupé <b>${m.interrupted}</b> · repris <b>${m.resumed}</b></span>
+    <span>appels <b>${m.llm_calls}</b> · <b>${fr(m.cost_usd, 3)} $</b></span>
+    <span>recherches <b>${esc(m.web_searches)}</b></span>`;
+
+  $("thoughts").innerHTML = s.thoughts.map(t => `
+    <tr>
+      <td>${KIND[t.kind] ? `<span class="pill">${KIND[t.kind]}</span> ` : ""}${t.answers != null ? `<span class="pill yes">réponse à L${t.answers}</span> ` : ""}<b>${esc(t.topic)}</b><br>${esc(t.utterance)}</td>
+      <td><span class="pill ${t.status}">${STATUS[t.status] || t.status}</span>${t.note ? `<br><span class="hint">${esc(t.note)}</span>` : ""}${(t.status === "ready" || t.status === "pending") && !t.fresh ? `<br><span class="hint">à re-juger</span>` : ""}</td>
+      <td class="n">${fr(t.importance, 0)}/5</td>
+      <td><div class="mini">pert.${bar(t.relevance)}</div><div class="mini">cohér.${bar(t.fit)}</div><div class="mini">déjà dit${bar(t.said, "grey")}</div></td>
+      <td class="n">${t.chosen != null ? `<b>${fr(t.chosen)}</b>${t.value != null ? `<br><span class="hint">${["sans valeur", "utile", "décisif"][Math.round(t.value)] || ""}</span>` : ""}` : fr(t.score)}</td>
+    </tr>`).join("") || `<tr><td colspan="5" class="empty">Aucune pensée pour l'instant.</td></tr>`;
+  $("raterinfo").textContent = s.rater && s.rater.line != null
+    ? `Jev choisit parmi les pensées · « rien » à ${fr(s.rater.none)} (ligne L${s.rater.line})` : "score = importance × pertinence × fraîcheur";
+  const WORK = {needs_details: "il manque des détails", asked: "question posée, attend la réponse", running: "recherche en cours",
+                done: "terminé", failed: "échec", expired: "abandonné (pas de réponse)"};
+  $("briefs").innerHTML = (s.briefs || []).length ? s.briefs.slice().reverse().map(b => `
+    <div class="iv">
+      <span class="meta">${esc(b.id)} · ${b.kind === "flights" ? "vols" : "recherche web"} · <b>${WORK[b.status] || b.status}</b> · demandé à L${b.segment}</span>
+      <span>« ${esc(b.line)} »</span>
+      ${Object.entries(b.details || {}).map(([k, v]) => `<span class="meta">${esc(k)} = ${esc(v.value)} <i>(${esc(v.source)})</i></span>`).join("")}
+      ${(b.missing || []).length ? `<span class="meta bad">manque : ${esc(b.missing.join(", "))}</span>` : ""}
+      ${b.question ? `<span>Question à la salle : « ${esc(b.question)} »</span>` : ""}
+      ${b.result ? `<pre class="hint" style="white-space:pre-wrap;margin:0">${esc(b.result)}</pre>` : ""}
+      ${b.error ? `<span class="bad">${esc(b.error)}</span>` : ""}
+    </div>`).join("") : "Aucun travail en cours.";
+  $("flows").innerHTML = (s.flows || []).length ? s.flows.slice().reverse().map(f => `
+    <div class="iv">
+      <span class="meta"><b>${esc(f.id)}</b> · ${f.kind === "flights" ? "vols" : "web"} · ${WORK[f.status] || f.status}
+        · ${f.result_said ? "résultat dit" : f.status === "done" ? "<span class='bad'>résultat pas encore dit</span>" : "…"}</span>
+      ${f.events.map(e => `<span class="meta">${fr(e.t, 1)} s ${e.dt != null ? `<b>(+${fr(e.dt, 1)})</b>` : ""} · ${esc(e.kind)} · ${esc(e.text)}</span>`).join("")}
+    </div>`).join("") : "Aucune demande pour l'instant.";
+  $("dispatch").innerHTML = (s.dispatch || []).length ? s.dispatch.slice().reverse().map(d => `
+    <div class="iv">
+      <span class="meta">${fr(d.t, 1)} s · L${d.segment} · ${fr(d.seconds)} s · ${d.actions.length ? "<b>" + esc(d.actions.join(", ")) + "</b>" : "rien à lancer"}</span>
+      <span>« ${esc(d.text)} »</span>
+      <span class="meta">s'adresse à Kairos ${fr(d.p.addressed)} · recherche web ${fr(d.p.search)} · vols ${fr(d.p.flights)}</span>
+    </div>`).join("") : "Aucune phrase aiguillée pour l'instant.";
+
+  $("interventions").innerHTML = s.interventions.length ? s.interventions.slice().reverse().map(r => `
+    <div class="iv">
+      <span class="meta">${fr(r.t, 1)} s · ${r.reason === "asked" ? "réponse" : r.reason === "pending" ? "retour sur un sujet" : "pensée importante"} ·
+        <span class="${r.moment === "turn change" || r.moment === "end of meeting" ? "" : "bad"}">${MOMENT[r.moment] || r.moment}</span> · après ${fr(r.latency_s)} s de silence
+        ${r.interrupted ? " · coupé" : ""}${r.resumed ? " · a repris" : ""}${r.yielded ? " · a cédé la parole" : ""}</span>
+      <span>« ${esc(r.text)} »</span>
+    </div>`).join("") : "Kairos ne s'est pas encore exprimé.";
+
+  $("decisions").innerHTML = s.decisions.slice().reverse().map(d =>
+    `<li><span class="t">${fr(d.t, 1)} s</span><span class="${d.speak ? "yes" : ""}">${d.speak ? "Parler · " : ""}${esc(d.why)}</span></li>`).join("");
+  $("notes").textContent = s.notes || "—";
+  const AGENT = {"thinker": "Penseurs", "answer": "Réponse rapide", "checker": "Vérificateur", "judge": "Juge (1 question)",
+    "research plan": "Chercheur · planification", "search": "Chercheur · recherche web", "embedding": "Pertinence (embeddings)",
+    "notes": "Notes", "archivist": "Archiviste"};
+  const order = ["answer", "checker", "thinker", "judge", "research plan", "search", "embedding", "notes", "archivist"];
+  $("timings").innerHTML = order.filter(k => s.timings && s.timings[k]).map(k => {
+    const t = s.timings[k];
+    return `<tr><td>${AGENT[k] || k}</td><td class="n">${t.n}</td><td class="n">${fr(t.mean_s)} s</td><td class="n">${fr(t.last_s)} s</td><td class="n">${fr(t.max_s)} s</td></tr>`;
+  }).join("");
+  const ivs = s.interventions || [];
+  if (ivs.length) {
+    const last = ivs[ivs.length - 1];
+    const avg = xs => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+    const after = avg(ivs.map(r => r.after_speech_s).filter(x => x != null));
+    $("latency").innerHTML = `
+      <div class="kv">
+        <span>Fin de parole → 1er mot de Kairos</span><span>dernier ${last.after_speech_s == null ? "—" : fr(last.after_speech_s) + " s"} · moyenne ${after == null ? "—" : fr(after) + " s"}</span>
+        <span>Pensée prête depuis</span><span>${last.thought_ready_s == null ? "—" : fr(last.thought_ready_s) + " s avant de parler"}</span>
+        ${last.question_to_answer_s != null ? `<span>Question → réponse prête</span><span>${last.question_to_answer_s <= 0 ? "prête " + fr(-last.question_to_answer_s) + " s AVANT la fin de la question" : fr(last.question_to_answer_s) + " s après la fin de la question"}</span>` : ""}
+      </div>
+      <span class="hint">Référence : entre humains, un changement de tour prend environ 0,2 s. En audio, la transcription ajoutera 0,5 à 0,8 s.</span>`;
+  }
+  const EVENT = e => e.startsWith("added") ? "ajoutée" + e.slice(5) : e === "pending" ? "mise de côté" : e === "stale" ? "retirée"
+    : e === "spoken" ? "dite" : e === "ready" ? "de retour" : e;
+  $("reslog").innerHTML = (s.reservoir_log || []).length ? s.reservoir_log.slice().reverse().map(r =>
+    `<div class="meta">${fr(r.t, 1)} s · <b>${esc(EVENT(r.event))}</b> par ${esc(r.by || "?")}${r.why ? " · " + esc(r.why) : ""} — « ${esc(r.thought.slice(0, 90))}${r.thought.length > 90 ? "…" : ""} »</div>`).join("")
+    : "Rien pour l'instant.";
+  $("findings").innerHTML = (s.findings || []).length ? s.findings.slice().reverse().map(f => `
+    <div class="iv">
+      <span class="meta">${f.status === "searching" ? "recherche en cours…" : f.status === "done" ? `trouvé en ${fr(f.seconds, 1)} s` : "échec"} · requête : « ${esc(f.query)} »</span>
+      <span><b>${esc(f.question)}</b></span>
+      ${f.answer ? `<span>${esc(f.answer)}</span>` : ""}
+      ${f.sources.length ? `<span class="meta">${f.sources.map(u => esc(u.replace(/^https?:\/\//, "").split("/")[0])).join(" · ")}</span>` : ""}
+    </div>`).join("") : "Aucune recherche pour l'instant.";
+}
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => { $("status").textContent = "connecté"; };
+  ws.onmessage = ev => render(JSON.parse(ev.data));
+  ws.onclose = () => { $("status").textContent = "déconnecté · reconnexion…"; setTimeout(connect, 1500); };
+}
+
+loadSources().catch(e => showError(e.message));
+connect();
+</script>
+</body>
+</html>

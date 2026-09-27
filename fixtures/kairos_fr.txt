@@ -1,0 +1,6 @@
+# Mémoire long terme de Kairos pour la réunion produit (une ligne = un souvenir).
+Les retours du test utilisateurs sont attendus le 12 février (décidé à la réunion du 20 janvier).
+Les trois principaux concurrents facturent 8 €, 9 € et 9,90 € par mois.
+Le salon de Lyon a lieu du 24 au 26 mars.
+L'équipe mobile a annoncé être prête fin février.
+Notre cible principale : les équipes de 5 à 20 personnes.
