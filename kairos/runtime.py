@@ -75,7 +75,7 @@ class RunConfig:
         if self.role == "active":
             # An active participant speaks up more readily and more often.
             self.policy = replace(self.policy, open_threshold=0.45, share_limit=0.25)
-            self.harness = replace(self.harness, unsolicited_gap_s=25.0)
+            self.harness = replace(self.harness, unsolicited_gap_s=6.0)
 
 
 @dataclass(slots=True)
@@ -146,6 +146,8 @@ class Runtime:
         self._cued: set[int] = set()  # questions that already got a "Mmh…"
         self.harness = Harness(config.harness)
         self.decisions: dict[float | None, Decision] = {}
+        self.decision_log: list[Decision] = []
+        self._last_why = ""
         self.interventions: list[Intervention] = []
         self.finished = False
         self._on_change = on_change or (lambda: None)
@@ -531,6 +533,12 @@ class Runtime:
             previous = self.decisions.get(gap)
             if previous is None or not previous.speak:
                 self.decisions[gap] = decision
+            if decision.why != self._last_why:
+                # Every change of mind, for the console and the Monitor: one decision per silence hid why a result
+                # waited after Kairos had spoken.
+                self._last_why = decision.why
+                self.decision_log.append(decision)
+                del self.decision_log[:-300]
         if not decision.speak:
             return
         plan = self.harness.check(decision, snap)
@@ -570,6 +578,8 @@ class Runtime:
         intervention.text = outcome.text
         if outcome.yielded and outcome.cut:
             self._after_cut(outcome.cut)
+        if outcome.yielded and len(outcome.text.split()) < 6:
+            self.harness.forgive(plan.t)  # cut off in its first words: not counted against the budget
         # Only what was said in full retires its duplicates: "Ils sont attendus le…" (cut off) did not say the date.
         said_in_full = " ".join(text for tid, text in plan.parts if tid in outcome.said)
         self.supervisor.on_spoken(outcome.said)  # a question for the room was asked: its brief waits for answers
@@ -590,19 +600,26 @@ class Runtime:
         self.board.update_thoughts({t.id: {"status": ThoughtStatus.STALE,
                                            "note": "coupée : à reformuler après ce qui a été dit"} for t in cut},
                                    by="orateur")
+        cut_at = snap.room.t
         for segment in {t.answers for t in cut if t.answers is not None}:
-            asyncio.create_task(self._answer_again(segment))
+            asyncio.create_task(self._answer_again(segment, cut_at))
 
-    async def _answer_again(self, segment: int) -> None:
+    async def _answer_again(self, segment: int, cut_at: float = 0.0) -> None:
         """The answer to this question was cut off: once the person has finished, write it again with what
-        they just added. Nothing if another question replaced it or it was answered meanwhile."""
+        they just added. Nothing if another question replaced it or it was answered meanwhile, nor when the
+        person only acknowledged it ("ah ok, je vois"): writing the same answer again, to be cut again, was
+        heard as Kairos repeating itself."""
         for _ in range(100):  # up to 8 s for the interrupting sentence to end
             room = self.board.snapshot().room
             if not room.speaking and room.silence_s >= 0.4:
                 break
             await self.clock.sleep(0.08)
-        signals = self.board.snapshot().signals
+        snap = self.board.snapshot()
+        signals = snap.signals
         if signals.addressed_segment != segment or signals.answered:
+            return
+        said = [s.text for s in snap.transcript if s.final and not is_ai(s) and s.t_end >= cut_at]
+        if not said or all(_acknowledges(text) for text in said):
             return
         try:
             await self.thinkers.answer(segment)
@@ -674,3 +691,8 @@ class Runtime:
 
     def human_lines(self) -> int:
         return sum(1 for s in self.board.snapshot().transcript if s.final and not is_ai(s))
+
+
+def _acknowledges(text: str) -> bool:
+    """A short reply that takes in what Kairos said without asking or adding anything ("Ah, ok. Je vois.")."""
+    return "?" not in text and len(text.split()) <= 5

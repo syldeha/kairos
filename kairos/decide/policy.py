@@ -22,7 +22,7 @@ class PolicyParams:
     p_end: float = 0.60              # ...and the detector expects silence to last 1 s
     long_gap_s: float = 0.9          # or the silence is already this long
     # Which thought?
-    fit_min: float = 0.70            # judge: coherent to say now
+    fit_min: float = 0.55            # judge: coherent to say now (0.70 left good thoughts unsaid in live tests)
     said_max: float = 0.30           # judge: not already said
     open_threshold: float = 0.55     # score needed to speak unprompted
     asked_threshold: float = 0.30    # score needed to answer a direct question
@@ -36,13 +36,18 @@ class PolicyParams:
     relevance_low: float = 0.15      # cosine similarity mapped to 0..1 between these bounds
     relevance_high: float = 0.55
     decisive_wait_s: float = 3.0  # how long a fresh correction may hold the floor while the judge sees it
-    choice_min: float = 0.5       # Jev rater: the picked thought must be at least this likely (and beat "none")
+    choice_min: float = 0.5       # Jev rater: "say nothing" must be under this, and the picked thought beat it
     unfinished_gap_s: float = 1.0  # a line still being spoken: wait this long before taking the floor
     asked_unfinished_gap_s: float = 0.5  # ...but a question to Kairos ending with "?" is over sooner
     answer_patience_s: float = 5.0   # a question with no answer yet after this long...
     answer_fallback_min: float = 0.8  # ...may be replied to by a thought Jev picks this clearly
     check_wait_s: float = 1.5        # the checker is reading the last line: hold other thoughts this long
     correction_fit_min: float = 0.50  # judge: a correction's statement is compound (right, unsettled, useful now)
+    clear_pick: float = 0.80          # Jev rater: a pick this clear, on the current line...
+    clear_pick_fit_min: float = 0.50  # ...lowers the coherence bar to this: the two readings are weighed together
+    follow_gap_s: float = 1.5         # after Kairos spoke, a thought Jev picks may follow once the pause is this long
+    follow_pick_min: float = 0.55     # ...if picked at least this clearly
+    follow_none_max: float = 0.30     # ...and Jev's "say nothing" is under this
 
 
 def floor_open(snap: BoardSnapshot, p: PolicyParams) -> bool:
@@ -53,6 +58,26 @@ def floor_open(snap: BoardSnapshot, p: PolicyParams) -> bool:
     if silence < p.min_gap_s:
         return False
     return room.p_silence[HORIZONS.index(1.0)] >= p.p_end or silence >= p.long_gap_s
+
+
+def may_follow(snap: BoardSnapshot, p: PolicyParams) -> bool:
+    """Kairos just spoke: what may still follow before anyone else talks. A search result someone waits for
+    (it arrived after "la recherche est en cours"), a correction, or a thought Jev clearly picks in a real pause.
+    Anything else waits for a person: two unprompted turns in a row sound like a monologue."""
+    humans = [s for s in snap.transcript if s.speaker != AI_NAME]
+    current = max(humans, key=lambda s: s.t_start).id if humans else None
+    signals = snap.signals
+    for t in snap.thoughts:
+        if t.status not in (ThoughtStatus.READY, ThoughtStatus.PENDING) or t.already_said > p.said_max:
+            continue
+        if t.kind == "finding" and t.answers is not None:
+            return True
+        if t.kind == "correction" and t.fit_now >= p.correction_fit_min:
+            return True
+        if (t.chosen is not None and t.chosen >= p.follow_pick_min and signals.rater_line == current
+                and signals.rater_none < p.follow_none_max and snap.room.silence_s >= p.follow_gap_s):
+            return True
+    return False
 
 
 def score(t: Thought, now: float, p: PolicyParams) -> float:
@@ -89,7 +114,7 @@ def decide(snap: BoardSnapshot, p: PolicyParams = PolicyParams()) -> Decision:
         t.answers == signals.addressed_segment and not t.ack and t.fit_now >= p.answer_fit_min
         and t.status in (ThoughtStatus.READY, ThoughtStatus.PENDING) for t in snap.thoughts)
     if ai.last_spoke_at is not None and room.silence_since is not None and ai.last_spoke_at >= room.silence_since \
-            and not follow_up:  # after "let me look that up", the answer may follow at once
+            and not follow_up and not may_follow(snap, p):  # after "let me look that up", the answer may follow
         return Decision(now, False, "Kairos spoke last: waiting for someone else")
     humans = [s for s in snap.transcript if s.speaker != AI_NAME]
     if humans:
@@ -107,8 +132,13 @@ def decide(snap: BoardSnapshot, p: PolicyParams = PolicyParams()) -> Decision:
     active = [t for t in snap.thoughts if t.status in (ThoughtStatus.READY, ThoughtStatus.PENDING)]
     # Only judgments made against the current last line count: an old "coherent" score is not evidence.
     current_line = max(humans, key=lambda s: s.t_start).id if humans else None
-    usable = [t for t in active if t.fit_now >= fit_bar(t, p) and t.already_said <= p.said_max
-              and (current_line is None or t.judged_line == current_line)]
+    # A thought Jev clearly picks on this very line (0.91 against "none") was filtered out by a middling
+    # coherence score (0.61) before its pick was even looked at: a clear pick now lowers that bar.
+    clearly_picked = {t.id for t in active if t.chosen is not None and t.chosen >= p.clear_pick
+                      and signals.rater_line is not None and signals.rater_line == current_line
+                      and t.chosen > signals.rater_none and t.fit_now >= p.clear_pick_fit_min}
+    usable = [t for t in active if (t.fit_now >= fit_bar(t, p) or t.id in clearly_picked)
+              and t.already_said <= p.said_max and (current_line is None or t.judged_line == current_line)]
     # A thought written before the conversation switched language is not said in the old language.
     spoken_now = language_of(max(humans, key=lambda s: s.t_start).text, None) if humans else None
     if spoken_now is not None:
@@ -150,7 +180,9 @@ def decide(snap: BoardSnapshot, p: PolicyParams = PolicyParams()) -> Decision:
     rated = [t for t in usable if t.chosen is not None]
     if signals.rater_line is not None and signals.rater_line == current_line and rated:
         best = max(rated, key=lambda t: t.chosen)
-        if best.chosen < p.choice_min or best.chosen <= signals.rater_none:
+        # Jev says whether to speak ("none") and which thought. Several good thoughts share its vote (0.31, 0.28,
+        # 0.25 against "none" 0.09): the best is said. Requiring the best alone above 0.5 kept Kairos silent.
+        if signals.rater_none >= p.choice_min or best.chosen <= signals.rater_none:
             return Decision(now, False, f"Jev: nothing to say now (best {best.chosen:.2f}, none {signals.rater_none:.2f})")
         reason = "pending" if best.status == ThoughtStatus.PENDING else "important"
         decision = Decision(now, True, f"Jev picks '{best.topic}' ({best.chosen:.2f} vs none {signals.rater_none:.2f})",

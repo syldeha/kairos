@@ -106,6 +106,21 @@ Keys (in `.env`):
 - `POST /api/say {"speaker": "…", "text": "…"}` adds a typed participant to a live session: handy
   for testing with two "people" in the room.
 
+### With the Atlas interface
+
+The same Kairos runtime can run behind the interface of [Atlas](https://github.com/KpihX/atlas): session
+library, workflow canvas, Monitor (reservoir, reservoir log, per-line trace, decisions), notes and
+transcript. `kairos/ui/` translates Kairos's board into the Atlas protocol (version 11); Kairos decides
+everything, the interface only shows it.
+
+```bash
+cd frontend && bun install && bun run build && cd ..
+python -m kairos.ui.server        # then open http://127.0.0.1:8787 (KAIROS_PORT to change it)
+```
+
+Pick the session language before starting (Français / English). Sessions are kept in
+`~/.local/share/kairos/sessions.db` (`KAIROS_DB` to change it).
+
 ### AMI meetings
 
 Kairos can replay real meetings from the [AMI corpus](https://groups.inf.ed.ac.uk/ami/corpus/)
@@ -154,6 +169,9 @@ Voice sessions are recorded to `runs/voice/` (ignored by git).
   (Liu et al., CHI 2025).
 - [meeting-sidecar](https://github.com/KpihX/meeting-sidecar): patterns for live notes and meeting
   memory.
+- [Atlas](https://github.com/KpihX/atlas) by Ivann Harold Kamdem Pouokam, Sylvain Dehayem and Pavel Wadoh
+  (X-IA Rise of Agents hackathon): the interface in `frontend/` and its data contract in
+  `kairos/ui/protocol.py`, used with the team's agreement.
 - [AMI Meeting Corpus](https://groups.inf.ed.ac.uk/ami/corpus/): real meetings for evaluation (CC BY 4.0).
 - [Gradium](https://gradium.ai) (voice), [Jev by TypeSafe](https://typesafe.ai) (judge),
   [Exa](https://exa.ai) (search), Jinko (flights).

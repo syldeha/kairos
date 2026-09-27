@@ -11,6 +11,7 @@ thoughts, and carry an importance score. Differences:
 
 from __future__ import annotations
 
+import datetime as dt
 import itertools
 import re
 from dataclasses import replace
@@ -18,7 +19,8 @@ from dataclasses import replace
 from ..board import Board
 from ..contracts import Thought, ThoughtStatus
 from ..llm import LLM
-from .common import active_thoughts, enforce_cap, is_ai, language_of, recent_ack, render_findings, render_transcript
+from .common import (active_thoughts, enforce_cap, is_ai, language_of, recent_ack, render_findings, render_transcript,
+                     spoken_language)
 
 
 SYSTEM = """You are the inner voice of Kairos, an AI assistant attending a live meeting with humans. You never speak here: you form thoughts Kairos might say later. A separate system decides whether and when Kairos speaks.
@@ -103,6 +105,7 @@ If the line is a question between participants about one person's own plans, tri
 If the line asks the group for its own opinion or judgment ("do you think it will matter?") and does not name Kairos, return an empty utterance: that question is for the people in the room.
 If the line asks nothing (a greeting, or someone telling Kairos about their plans), reply in a few words that acknowledge it and invite them to go on ("Bonjour ! Dis-moi ce que tu cherches."), with "known": true.
 Only for a factual question whose answer is a public fact that Kairos does not have, set "known": false and give a short web search "query" (no names): Kairos will look it up.
+Today's date is given with the question. Your own knowledge stops at your training: whatever may have happened or changed since (a result, a winner, an election, news, a current price or schedule, who holds a role), Kairos does not know it from memory. Unless its web findings already answer it, set "known": false with a query; never state from memory that something has not happened yet.
 If Kairos does not know and the web cannot know it either (internal matters), say so briefly with "known": true."""
 
 CHECK_SYSTEM = """You check the last line of a live meeting against the facts: what Kairos, an AI assistant attending it, knows for sure (memory, web findings) and the figures clearly stated earlier (transcript, meeting notes).
@@ -113,6 +116,7 @@ Give one only if:
 "expression": when a number must be computed, the arithmetic expression with the figures as stated (e.g. "50000000 / (25 - 20.5)"); Kairos's code computes it. Put {result} in the utterance where the computed value goes, and never write that value yourself. Several values: a list of expressions, with {result}, {result2}, {result3} in the utterance. Otherwise "".
 Compute the quantity the line is about (what the parts cost, not the margin). When the line is unclear about what a figure refers to ("eighty percent of the... amount"), never guess what the speaker meant: give the figure itself and its share of each plausible base, e.g. "Six parts at 1.20 is {result} euros, that is {result2} percent of the 10 euro budget and {result3} percent of the price."
 The utterance is one or two short spoken sentences in {language}, plainly stating the fact or the calculation, e.g. "With a 4.50 euro margin, 50 million euros of profit means about {result} remotes, not 2 million." or "Attention, le budget validé est de 12 000 €, pas 15 000." Use "tu" if the participants say "tu". Refer to people by their names, never by a gendered pronoun. The utterance is spoken aloud: plain words only, no slashes, asterisks, arrows, bullet points or abbreviations like "vs".
+What Kairos searched (the dates and places of its own flight or web searches, some of them assumed) is not a fact about the people's plans: never correct what someone says about their own plans with the parameters of a search Kairos ran.
 A contradiction needs the same quantity: units to sell and chips to buy, a target and an estimate, a cost and a price are different things even with the same unit.
 A figure that makes no sense in the conversation may be misheard ("dans 3 euros" after prices of 153 euros): no correction for it.
 No correction for an approximation close to the fact ("une vingtaine ?" when Kairos knows 18 people), an opinion, a proposal that contradicts nothing, an information question Kairos cannot compute from its figures, or a result someone in the room already gave correctly. Most lines need none: {"correction": null}."""
@@ -166,8 +170,11 @@ class Thinkers:
         question = next((s for s in snap.transcript if s.id == segment_id), None)
         if question is None:
             return
-        user = self._context(snap) + f"\n\nThe question, line L{segment_id}: {question.speaker}: {question.text}"
-        language = language_of(question.text, self.language)  # reply in the language the person just used
+        user = (f"Today is {dt.date.today().isoformat()}.\n\n" + self._context(snap)
+                + f"\n\nThe question, line L{segment_id}: {question.speaker}: {question.text}")
+        # Reply in the language the person just used (the room's, when the line is too short to tell).
+        earlier = [s.text for s in snap.transcript if not is_ai(s) and s.id <= segment_id]
+        language = spoken_language(earlier, self.language)
         raw = await self.llm.json(_speak_in(language) + ANSWER_SYSTEM.replace("{language}", language), user,
                                   purpose="answer")
         if language_of(str(raw.get("utterance") or ""), None) not in (None, language):
@@ -270,7 +277,7 @@ class Thinkers:
         snap = self.board.snapshot()
         try:
             last = [s for s in snap.transcript if not is_ai(s)]
-            language = language_of(last[-1].text, self.language) if last else self.language
+            language = spoken_language([s.text for s in last], self.language)
             result = await self.llm.json(system_prompt(self.role, language), self._context(snap),
                                          purpose="thinker")
         except Exception:

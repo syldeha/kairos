@@ -30,6 +30,18 @@ def language_of(text: str, default: str | None = "French") -> str | None:
     if french >= 2 and french > english:
         return "French"
     return default
+
+
+def spoken_language(lines: list[str], default: str) -> str:
+    """The language the room speaks now: the latest line where it can be told. A short line ("We're going
+    with my boys.", "On part samedi.") does not reset it to the meeting's default."""
+    for text in reversed(lines[-4:]):
+        language = language_of(text, None)
+        if language is not None:
+            return language
+    return default
+
+
 ACTIVE = (ThoughtStatus.READY, ThoughtStatus.PENDING)
 
 

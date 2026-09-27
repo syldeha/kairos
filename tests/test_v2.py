@@ -37,7 +37,16 @@ class FakeJev:
         self.p = p
 
     async def ask(self, state, questions, purpose="judge"):
-        return {k: {"type": "noul", "noul": self.p.get(k, 0.0)} for k in questions}
+        answers = {}
+        for k, question in questions.items():
+            if question.get("type") == "choice":
+                # flights / web / none: what each test gives, the rest to "none"
+                flights, web = self.p.get("flights", 0.0), self.p.get("search", 0.0)
+                answers[k] = {"choice": "", "probabilities": {"flights": flights, "web": web,
+                                                              "none": max(0.0, 1.0 - flights - web)}}
+            else:
+                answers[k] = {"type": "noul", "noul": self.p.get(k, 0.0)}
+        return answers
 
 
 def test_dispatcher_opens_the_answer_lane_and_a_flight_brief():
@@ -47,7 +56,7 @@ def test_dispatcher_opens_the_answer_lane_and_a_flight_brief():
         work.append((kind, segment, is_addressed))
 
     board = board_with()
-    d = Dispatcher(board, FakeJev(addressed=0.9, flights=0.85), addressed.append, open_work)
+    d = Dispatcher(board, FakeJev(addressed=0.9, flights=0.85, search=0.1), addressed.append, open_work)
     result = asyncio.run(d.run(4, "Kairos, tu peux regarder les vols pour Lisbonne ?"))
     assert addressed == [4] and work == [("flights", 4, True)] and result.actions == ["réponse", "vols"]
 
@@ -228,13 +237,24 @@ def test_flights_win_when_likely_and_travel_mentioned_in_passing_does_not_count(
     async def open_work(kind, segment, text, is_addressed):
         work.append(kind)
 
-    asyncio.run(Dispatcher(board_with(), FakeJev(flights=0.83, needs_fact=0.95), lambda s: None, open_work)
+    asyncio.run(Dispatcher(board_with(), FakeJev(flights=0.83, search=0.1), lambda s: None, open_work)
                 .run(3, "Ça fait combien de temps de vol depuis Paris, déjà ?"))
-    asyncio.run(Dispatcher(board_with(), FakeJev(flights=0.78), lambda s: None, open_work)
+    asyncio.run(Dispatcher(board_with(), FakeJev(flights=0.3, search=0.1), lambda s: None, open_work)
                 .run(11, "Parfait, j'envoie un mail à l'équipe."))
-    asyncio.run(Dispatcher(board_with(), FakeJev(flights=0.89, needs_fact=0.25), lambda s: None, open_work)
-                .run(10, "Tout le monde prend l'avion le 14 au matin ?"))
-    assert work == ["flights", "flights"]  # Jinko also gives durations; the 0.78 line opens nothing
+    asyncio.run(Dispatcher(board_with(), FakeJev(flights=0.61, search=0.3), lambda s: None, open_work)
+                .run(10, "Tu peux nous trouver un trajet Paris Groningen ?"))
+    assert work == ["flights", "flights"]  # a trip goes to Jinko; a line Jev gives mostly to "none" opens nothing
+
+
+def test_a_train_or_a_fact_goes_to_the_web_worker_even_when_travel_is_the_topic():
+    work = []
+
+    async def open_work(kind, segment, text, is_addressed):
+        work.append(kind)
+
+    asyncio.run(Dispatcher(board_with(), FakeJev(flights=0.2, search=0.75), lambda s: None, open_work)
+                .run(5, "Non, regarde-moi un trajet en train avec la SNCF."))
+    assert work == ["web"]
 
 
 # -- fixes after the live test (Cameroon conversation) ------------------------------------
@@ -416,23 +436,21 @@ class AssumingLLM:
                 "question": "Tu partirais quand ?"}
 
 
-def test_asked_again_without_the_details_kairos_searches_on_stated_assumptions():
-    lines = [Segment(1, "Vous", "Je veux aller de Paris à Douala en décembre, seul.", 0, 3, True),
-             Segment(2, "Vous", "Alors, c'est combien ?", 5, 6, True)]
+def test_asked_without_a_precise_date_kairos_searches_at_once_on_stated_assumptions():
+    lines = [Segment(1, "Vous", "Je veux aller de Paris à Douala en décembre, seul.", 0, 3, True)]
     board = board_with(transcript=lines)
     flights = FakeFlights()
     sup = WorkerSupervisor(board, AssumingLLM(), "French", flights=flights)
 
     async def scenario():
         brief = await sup.open("flights", 1, lines[0].text, addressed=True)
-        assert brief.missing == ["date"] and brief.questions_asked == 1
-        sup.on_spoken([brief.question_id])
-        await sup.open("flights", 2, lines[1].text, addressed=True)  # asked again, no date given
         await sup.drain()
         return brief
 
     brief = asyncio.run(scenario())
-    assert brief.status == "done" and brief.assumptions and flights.searched[0][2][0] == "2026-12-14"
+    # Asked for: no form to fill first ("quelle date ?"); a week in December is assumed and said with the result.
+    assert brief.questions_asked == 0 and brief.status == "done"
+    assert brief.assumptions and flights.searched[0][2][0] == "2026-12-14"
     assert "supposant" in {t.id: t for t in board.snapshot().thoughts}["rB1"].utterance
 
 
@@ -560,7 +578,7 @@ def test_correction_needs_a_lower_fit_but_still_jev_pick():
     from kairos.decide.policy import PolicyParams, fit_bar
     p = PolicyParams()
     assert fit_bar(thought("c1", kind="correction"), p) < fit_bar(thought("t1"), p)
-    assert fit_bar(thought("c1", kind="correction"), p) <= 0.6 < p.fit_min
+    assert fit_bar(thought("c1", kind="correction"), p) <= 0.5 < p.fit_min
 
 
 # -- topic tracker and transcript cleaner -------------------------------------------------
@@ -746,3 +764,124 @@ def test_no_markdown_enters_the_reservoir():
                      utterance="## [Pharmacie de la Gare](https://maps.example/x) est **ouverte** jusqu'à 20 h.")
     board.update_thoughts({}, (result,), by="travaux B1")
     assert board.snapshot().thoughts[0].utterance == "Pharmacie de la Gare est ouverte jusqu'à 20 h."
+
+
+class WorldCupLLM:
+    async def json(self, system, user, *, purpose, temperature=0.4):
+        return {"details": {"query": {"value": "vainqueur Coupe du monde 2026", "source": "L31"}},
+                "missing": [], "question": ""}
+
+
+def test_what_the_search_found_replaces_an_answer_written_from_memory_and_keeps_its_promise():
+    line = Segment(31, "Vous", "Alors, est-ce que tu sais qui a gagné la Coupe du Monde ?", 0, 4, True)
+    stale_knowledge = replace(thought("t9", importance=5.0, judged_line=31), kind="answer", answers=31,
+                              utterance="La Coupe du Monde 2026 n'a pas encore eu lieu.")
+    board = board_with([stale_knowledge], [line])
+    search = FakeSearch("L'Espagne a gagné la Coupe du monde 2026 contre l'Argentine, 1 à 0.")
+    sup = WorkerSupervisor(board, WorldCupLLM(), "French", search=search)
+
+    async def scenario():
+        await sup.open("web", 31, line.text, addressed=False)  # Jev did not read it as addressed
+        await sup.drain()
+
+    asyncio.run(scenario())
+    thoughts = {t.id: t for t in board.snapshot().thoughts}
+    assert thoughts["t9"].status == ThoughtStatus.STALE  # never said: the finding replaces it
+    assert thoughts["rB1"].answers == 31 and "Espagne" in thoughts["rB1"].utterance
+
+
+# -- coherence: a request is linked to the trip being discussed ------------------------------------------
+
+class RecordingLLM:
+    def __init__(self):
+        self.prompts = []
+
+    async def json(self, system, user, *, purpose, temperature=0.4):
+        self.prompts.append(user)
+        return {"details": {"query": {"value": "hôtels Zanzibar 28 octobre 2026", "source": "notes"}},
+                "missing": [], "question": ""}
+
+
+def test_a_hotel_request_sees_the_trip_in_the_notes_and_in_the_flight_search():
+    line = Segment(40, "Vous", "Et pour les hôtels qui se trouvent là-bas, comment on fait ?", 0, 3, True)
+    board = board_with(transcript=[line])
+    board.publish("notes", "- Voyage à Zanzibar depuis Paris, départ le 28 octobre.")
+    llm = RecordingLLM()
+    sup = WorkerSupervisor(board, llm, "French", search=FakeSearch("Hôtels à Stone Town dès 45 euros la nuit."))
+
+    async def scenario():
+        from kairos.agents.workers import Brief
+        sup.briefs.append(Brief(id="B3", kind="flights", segment=20, line="Paris Zanzibar", addressed=True,
+                                created_at=0.0, status="done",
+                                details={"destination": {"value": "Zanzibar (ZNZ)"}, "date": {"value": "2026-10-28"}}))
+        await sup.open("web", 40, line.text, addressed=True)
+        await sup.drain()
+
+    asyncio.run(scenario())
+    prompt = llm.prompts[0]
+    assert "Voyage à Zanzibar depuis Paris" in prompt  # the short-term memory
+    assert "B3 (flights, done): destination = Zanzibar (ZNZ), date = 2026-10-28" in prompt
+
+
+def test_nothing_is_assumed_while_the_person_is_still_giving_the_details():
+    lines = [Segment(1, "Vous", "Je veux aller de Paris à Douala, disons que je pars le", 0, 3, False)]
+    board = board_with(transcript=lines)
+    board.publish("room", RoomState(t=10.0, speaking=True, silence_since=None, p_silence=(0.1,) * 4))
+    flights = FakeFlights()
+    sup = WorkerSupervisor(board, AssumingLLM(), "French", flights=flights)
+
+    async def scenario():
+        brief = await sup.open("flights", 1, lines[0].text, addressed=True)
+        await sup.drain()
+        return brief
+
+    brief = asyncio.run(scenario())
+    assert brief.missing == ["date"] and not flights.searched  # "le 27 août" may be the next words
+
+
+def test_an_acknowledgment_is_not_a_reason_to_write_the_cut_answer_again():
+    from kairos.runtime import _acknowledges
+    assert _acknowledges("Ah, ok. Je vois.") and _acknowledges("D'accord.")
+    assert not _acknowledges("Comment tu peux m'aider à réserver, alors ?")
+    assert not _acknowledges("Non, je pars plutôt de Lyon le 28 octobre avec mes deux fils.")
+
+
+def test_a_thought_jev_clearly_picks_is_said_even_with_a_middling_coherence_score():
+    line = Segment(3, "Vous", "Est-ce que tu aurais des idées de villes avec de la plage, en Afrique ?", 0, 4.0, True)
+    offer = replace(thought("qB1n1", chosen=0.91, judged_line=3), kind="question", fit_now=0.52,
+                    utterance="Tu veux que je cherche des destinations en Afrique avec de belles plages ?")
+    signals = Signals(judged_segment=3, judged_words=13, rater_line=3, rater_none=0.05)
+    assert decide(board_with([offer], [line], signals).snapshot()).speak
+    weak = replace(offer, chosen=0.6)  # not a clear pick: the coherence bar stays
+    assert not decide(board_with([weak], [line], signals).snapshot()).speak
+
+
+def test_when_jev_says_to_speak_the_best_of_several_good_thoughts_is_said():
+    line = Segment(7, "Vous", "Qui ose ? Est-ce que tu aurais des idées ?", 0, 3.0, True)
+    ideas = [replace(thought(f"t{i}", chosen=c, judged_line=7), fit_now=f)
+             for i, (c, f) in enumerate([(0.31, 0.78), (0.28, 0.71), (0.25, 0.60)])]
+    speak = Signals(judged_segment=7, judged_words=9, rater_line=7, rater_none=0.09)
+    d = decide(board_with(ideas, [line], speak).snapshot())
+    assert d.speak and d.primary == "t0"  # "none" at 0.09: something should be said, the best one is
+    quiet = Signals(judged_segment=7, judged_words=9, rater_line=7, rater_none=0.55)
+    assert not decide(board_with(ideas, [line], quiet).snapshot()).speak
+
+
+def test_a_search_result_someone_waits_for_follows_kairos_at_once_but_an_idea_waits():
+    from kairos.contracts import AiState
+    line = Segment(8, "Vous", "Ça coûterait combien, les billets de Paris jusqu'aux Antilles ?", 0, 4.0, True)
+    result = replace(thought("rB1", chosen=0.8, judged_line=8, importance=5.0), kind="finding", answers=8,
+                     fit_now=0.87, utterance="Le moins cher est un vol direct Paris Pointe-à-Pitre à 402 euros.")
+    signals = Signals(judged_segment=8, judged_words=12, rater_line=8, rater_none=0.1, answered=True)
+
+    def after_kairos(thoughts, silence_s=1.0):
+        board = board_with(thoughts, [line], signals, t=10.0)
+        board.publish("room", RoomState(t=10.0, speaking=False, silence_since=10.0 - silence_s, p_silence=(0.9,) * 4))
+        board.publish("ai", AiState(last_spoke_at=9.5))  # "la recherche est en cours…" just ended
+        return decide(board.snapshot())
+
+    assert after_kairos([result]).speak
+    idea = replace(thought("t7", chosen=0.4, judged_line=8), fit_now=0.8)
+    assert not after_kairos([idea], silence_s=2.0).speak  # a weak pick waits for a person
+    clear = replace(idea, chosen=0.71)
+    assert not after_kairos([clear], silence_s=1.0).speak and after_kairos([clear], silence_s=2.0).speak

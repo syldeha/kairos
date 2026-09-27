@@ -14,3 +14,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# Atlas interface (frontend/): dependencies and build output
+frontend/node_modules/
+frontend/dist/

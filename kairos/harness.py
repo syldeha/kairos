@@ -18,8 +18,10 @@ REASONS = ("asked", "important", "pending")
 
 @dataclass(frozen=True, slots=True)
 class HarnessParams:
-    unsolicited_gap_s: float = 30.0   # at most one unprompted intervention per this many seconds
-    urgent_score: float = 0.85        # ...unless the thought is this important
+    # At most one unprompted intervention per this many seconds. 30 s (long AMI meetings) kept a thought Jev picked
+    # at 0.81 unsaid for 23 s of silence in a live conversation.
+    unsolicited_gap_s: float = 10.0
+    urgent_score: float = 0.55        # ...unless Jev picks the thought above the speaking threshold: said at once
     max_words: int = 45
 
 
@@ -27,6 +29,7 @@ class Harness:
     def __init__(self, params: HarnessParams = HarnessParams()) -> None:
         self.params = params
         self._last_unsolicited: float | None = None
+        self._before_last: float | None = None
         self.refusals: list[tuple[float, str]] = []
 
     def check(self, decision: Decision, snap: BoardSnapshot) -> UtterancePlan | None:
@@ -46,8 +49,13 @@ class Harness:
             if _words(parts[0][1]) + _words(text) <= self.params.max_words:
                 parts.append((chained.id, text))
         if decision.reason != "asked":
-            self._last_unsolicited = decision.t
+            self._before_last, self._last_unsolicited = self._last_unsolicited, decision.t
         return UtterancePlan(decision.t, decision.reason or "", tuple(parts))
+
+    def forgive(self, t: float) -> None:
+        """The intervention started at `t` was cut off in its first words ("Le vol…"): it does not count."""
+        if self._last_unsolicited == t:
+            self._last_unsolicited = self._before_last
 
     def _refusal(self, decision: Decision, snap: BoardSnapshot) -> str | None:
         if not decision.speak:

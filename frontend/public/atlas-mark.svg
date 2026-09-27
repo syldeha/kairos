@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Atlas</title>
+  <defs>
+    <linearGradient id="atlas-orbit" x1="10" y1="9" x2="55" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7C9BFF"/>
+      <stop offset="0.52" stop-color="#8B6BE8"/>
+      <stop offset="1" stop-color="#E08B71"/>
+    </linearGradient>
+    <radialGradient id="atlas-core" cx="0" cy="0" r="1" gradientTransform="translate(25 20) rotate(49) scale(35)">
+      <stop stop-color="#F4F1EA"/>
+      <stop offset="1" stop-color="#CBC5D6"/>
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="32" r="20.5" fill="none" stroke="url(#atlas-orbit)" stroke-width="4"/>
+  <path d="M10 39.5c9.8 4.5 34.2 4.5 44 0" fill="none" stroke="url(#atlas-orbit)" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M31.9 11.6c-7 7.6-7 33.3 0 40.8" fill="none" stroke="url(#atlas-orbit)" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="6.8" fill="url(#atlas-core)"/>
+  <circle cx="12.2" cy="38.4" r="3.2" fill="#E08B71"/>
+  <circle cx="51.8" cy="38.4" r="3.2" fill="#7C9BFF"/>
+  <path d="M32 3.8l2.2 5.3 5.3 2.2-5.3 2.2-2.2 5.3-2.2-5.3-5.3-2.2 5.3-2.2z" fill="#F0C777"/>
+</svg>

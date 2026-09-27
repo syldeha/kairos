@@ -12,7 +12,9 @@ from __future__ import annotations
 import re
 
 #: The assistant's name, with the spellings a speech recogniser is likely to produce.
-NAME = re.compile(r"\b(kairos|kaïros|cairos|kairo|kyros|chiros|kéros|keros|kiros)\b", re.IGNORECASE)
+#: "Qui ose ?" (heard live for "Kairos ?") only as a call, never inside a sentence ("qui ose dire que...").
+NAME = re.compile(r"\b(kairos|kaïros|cairos|kairo|kyros|chiros|kéros|keros|kiros)\b|\bqui[ -]?ose(?=\s*[,?!.]|\s*$)",
+                  re.IGNORECASE)
 
 QUESTION_STARTS = (
     # French

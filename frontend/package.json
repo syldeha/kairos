@@ -1,0 +1,33 @@
+{
+  "name": "atlas-frontend",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "generate:protocol": "openapi-typescript openapi.json -o src/protocol.gen.ts",
+    "build": "tsc --noEmit && vite build",
+    "test:components": "vitest run",
+    "test": "bun run test:components",
+    "check": "bun run test && tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "lucide-react": "^1.48.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "jsdom": "^30.1.1",
+    "openapi-typescript": "latest",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.2"
+  }
+}

@@ -163,7 +163,7 @@ def test_judge_only_considers_lines_that_name_kairos():
 
 def test_harness_budget_and_length():
     board = board_with([thought("a", utterance="word " * 60)])
-    harness = Harness(HarnessParams(unsolicited_gap_s=30, max_words=45))
+    harness = Harness(HarnessParams(unsolicited_gap_s=30, urgent_score=0.85, max_words=45))
     d = decide(board.snapshot())
     plan = harness.check(d, board.snapshot())
     assert plan and len(plan.parts[0][1].split()) == 45
@@ -175,7 +175,7 @@ def test_harness_budget_and_length():
 def test_budget_lets_a_correction_through_when_it_holds_back_the_best_idea():
     from kairos.harness import decisive_only
     board = board_with([thought("idea", importance=4, relevance=0.6), thought("fix", importance=5, relevance=0.3)])
-    harness = Harness(HarnessParams(unsolicited_gap_s=30))
+    harness = Harness(HarnessParams(unsolicited_gap_s=30, urgent_score=0.85))
     harness._last_unsolicited = 5.0  # Kairos spoke unprompted 5 s ago
     d = decide(board.snapshot())
     assert d.primary == "idea" and harness.check(d, board.snapshot()) is None
@@ -404,7 +404,7 @@ def test_active_role_speaks_up_more_readily():
 
 def test_urgent_thought_overrides_the_budget():
     board = board_with([thought("a", importance=4, relevance=0.6)])
-    harness = Harness(HarnessParams(unsolicited_gap_s=30))
+    harness = Harness(HarnessParams(unsolicited_gap_s=30, urgent_score=0.85))
     d = decide(board.snapshot())
     assert harness.check(d, board.snapshot())
     assert harness.check(replace(d, t=d.t + 5, score=0.9), board.snapshot())  # urgent: allowed
@@ -680,7 +680,7 @@ def test_the_roster_is_known_before_people_speak():
 
 def test_a_correction_is_never_held_back_by_the_budget():
     board = board_with([thought("fix", importance=5, relevance=0.3)])
-    harness = Harness(HarnessParams(unsolicited_gap_s=30))
+    harness = Harness(HarnessParams(unsolicited_gap_s=30, urgent_score=0.85))
     d = decide(board.snapshot())
     assert harness.check(d, board.snapshot())
     assert harness.check(replace(d, t=d.t + 5, score=0.6), board.snapshot())  # importance 5: allowed
@@ -767,3 +767,22 @@ def test_thinkers_cannot_replace_findings_or_corrections():
     asyncio.run(Thinkers(board, Replacer(), "French").run_once())
     status = {t.id: t.status for t in board.snapshot().thoughts}
     assert status == {"rf1": ThoughtStatus.READY, "fix": ThoughtStatus.READY, "minor": ThoughtStatus.STALE}
+
+
+def test_a_live_conversation_budget_lets_valid_thoughts_through_in_a_silence():
+    board = board_with([thought("a")])
+    harness = Harness()  # the live defaults
+    first = decide(board.snapshot())
+    assert harness.check(first, board.snapshot()) is not None
+    assert harness.check(replace(first, t=first.t + 5, score=0.5), board.snapshot()) is None  # a weak one waits
+    assert harness.check(replace(first, t=first.t + 5, score=0.71), board.snapshot()) is not None  # Jev > 0.55
+    assert harness.check(replace(first, t=first.t + 16, score=0.5), board.snapshot()) is not None  # 10 s later
+
+
+def test_an_intervention_cut_off_in_its_first_words_does_not_use_the_budget():
+    board = board_with([thought("a")])
+    harness = Harness()
+    first = decide(board.snapshot())
+    harness.check(first, board.snapshot())
+    harness.forgive(first.t)  # "Le vol…" and someone spoke
+    assert harness.check(replace(first, t=first.t + 2, score=0.6), board.snapshot()) is not None

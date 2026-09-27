@@ -58,6 +58,7 @@ class StartRequest(BaseModel):
     voice: bool = False        # Direct only: microphone and loudspeakers through Gradium
     voice_id: str = "iEu63s1rhn_kegTr"
     stt_delay_frames: int = 16  # Gradium's look-ahead, 80 ms each: lower is faster, higher is more accurate
+    language: str | None = None  # "French" or "English"; None = the meeting's default
 
 
 class SayRequest(BaseModel):
@@ -80,8 +81,8 @@ class Session:
         llm = make_llm(settings)
         judge = make_judge(req.judge, settings, llm)
         timeline = load_timeline(req.source, req.anonymous)
-        config = RunConfig(mode=req.mode, speed=max(req.speed, 0.5), language=default_language(req.source),
-                           role=req.role)
+        language = req.language if req.language in ("French", "English") else default_language(req.source)
+        config = RunConfig(mode=req.mode, speed=max(req.speed, 0.5), language=language, role=req.role)
         if req.memory is not None:
             memory = [line.strip() for line in req.memory.splitlines() if line.strip()]
         else:

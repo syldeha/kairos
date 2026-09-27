@@ -49,8 +49,10 @@ SPECS: dict[str, dict] = {
         "goal": "find on the web what the person needs (a place, a restaurant, an address, a schedule, a price, a fact)",
         "details": {
             "query": ("a specific web search query: what is sought and, when it matters, where or when (e.g. "
-                      "\"restaurant végétarien pas cher Paris 5e\"); missing if too vague to search (\"un resto\" "
-                      "with no place); no names of people, nothing about this team"),
+                      "\"restaurant végétarien pas cher Paris 5e\"); a broad but real need is searchable as it is "
+                      "(\"des villes avec de belles plages en Afrique\" -> \"meilleures villes balnéaires Afrique\"); "
+                      "missing only when there is nothing to search at all (\"un resto\" with no place); no names "
+                      "of people, nothing about this team"),
         },
         "optional": {},
     },
@@ -64,9 +66,10 @@ Optional details:
 {optional}
 Kairos is an AI assistant: it has no preferences of its own ("mars me convient" is wrong; "d'accord pour mars" is right).
 The transcript comes from live speech recognition: a name that sounds like "Kairos" ("Kéros", "Kiros", "Caïros") is people talking to the assistant, never a place, a restaurant or a name to search. Other misheard words: understand them by the conversation, and take names of places from what was said or found before (a restaurant Kairos proposed).
-Fill each detail from the transcript and Kairos's memory. Take what the conversation makes clear, even if said in other words ("rentrer au Cameroun" gives the destination; "I'm alone" gives 1 traveller); never invent what nobody said.
+Fill each detail from the transcript, the meeting notes, the other searches and Kairos's memory.
+Link the request to the plan being discussed: "là-bas", "the hotels there", "pour le voyage", "on the same day" take the destination, the dates and the number of people of the trip in the notes or in the other searches; never ask again for what the conversation already settled. Take what the conversation makes clear, even if said in other words ("rentrer au Cameroun" gives the destination; "I'm alone" gives 1 traveller); never invent what nobody said.
 Return one JSON object: {{"details": {{"name": {{"value": "...", "source": "L12 or M3"}}}}, "missing": ["name"], "assumed": {{"name": {{"value": "...", "why": "..."}}}}, "declined": false, "question": "..."}}.
-"assumed" proposes a sensible default for every missing detail that has one: 1 traveller when the person speaks only of themselves; when only a month or a period was given ("en mars", "around December", "end of year"), up to 7 comma-separated dates in the middle of it (e.g. March -> 2027-03-12,...,2027-03-18). Never for a place nobody mentioned.
+"assumed" proposes a sensible default for every missing detail that has one: 1 traveller when the person speaks only of themselves, the number of people mentioned otherwise ("on sera six", "with my two boys" -> 3); when no date at all was given, the next 7 days from tomorrow; when only a month or a period was given ("en mars", "around December", "end of year"), up to 7 comma-separated dates in the middle of it (e.g. March -> 2027-03-12,...,2027-03-18). Never for a place nobody mentioned.
 "declined" is true only if the person clearly refused the search.
 "question" is empty when nothing required is missing; otherwise ONE short spoken sentence asking for every missing detail at once. Write it in {language}: the language of the person's latest line, even if the conversation started in another language. {style} Use "tu" if the person says "tu" or speaks casually alone with Kairos."""
 
@@ -243,7 +246,12 @@ class WorkerSupervisor:
         system = FILL_SYSTEM.format(goal=spec["goal"], language=brief.language, style=style,
                                     details="\n".join(f"- {k}: {v}" for k, v in spec["details"].items()),
                                     optional="\n".join(f"- {k}: {v}" for k, v in spec["optional"].items()) or "(none)")
+        others = "\n".join(
+            f"- {b.id} ({b.kind}, {b.status}): " + ", ".join(f"{k} = {v.get('value')}" for k, v in b.details.items())
+            for b in self.briefs[-6:] if b is not brief and b.details) or "(none)"
         user = (f"Today is {self.today.isoformat()}.\n\nKairos's memory:\n{memory}\n\n"
+                f"Meeting notes (short-term memory: what the room said and settled so far):\n{snap.notes or '(none yet)'}"
+                f"\n\nOther searches in this conversation, with their details:\n{others}\n\n"
                 f"Transcript (latest last):\n{render_transcript(snap, last=14)}\n\n"
                 f"The line that opened this work: L{brief.segment}: {brief.line}\n\nAlready known:\n{known}")
         try:
@@ -267,9 +275,11 @@ class WorkerSupervisor:
         brief.missing = [n for n in spec["details"] if n not in brief.details or not _valid(n, brief.details[n])]
         assumed = {k: v for k, v in (raw.get("assumed") or {}).items()
                    if k in brief.missing and isinstance(v, dict) and _valid(k, v)}
-        if brief.questions_asked and assumed:
-            # Each detail is asked once. Still missing but assumable (a week in March, one traveller): assume it now,
-            # say so with the result, and ask only for what cannot be guessed (where the person leaves from).
+        if (brief.questions_asked or brief.addressed) and assumed and not snap.room.speaking:
+            # Asked for, or already asked once: what can be assumed (the next days, one traveller, a week in March)
+            # is assumed now and said with the result; only what cannot be guessed (where from, where to) is asked.
+            # Too many questions before a search felt like a form. Never while the person is still speaking: the
+            # date may be the next words ("je pars de Paris le..." searched the next 7 days before "27 août").
             for k, v in assumed.items():
                 brief.details[k] = {"value": str(v["value"]), "source": "supposé"}
                 brief.assumptions.append(f"{k} = {v['value']} ({v.get('why', '')})")
@@ -469,6 +479,8 @@ class WorkerSupervisor:
             utterance = FAILED.get(brief.language, FAILED["English"]).format(q=query)  # a promise gets an answer
         else:
             return  # a background search that found nothing: no need to bother the room
+        if found and self._supersede(brief) and owed is None:
+            owed = brief.segment  # the line waited for an answer: the finding keeps that promise
         self._retire_question(brief, "remplacée par le résultat")
         if owed is not None:
             self._open_reply(owed)
@@ -513,6 +525,8 @@ class WorkerSupervisor:
             return
         self._retire_question(brief, "remplacée par le résultat")
         owed = self._owed_line(brief)
+        if self._supersede(brief) and owed is None:
+            owed = brief.segment  # the line waited for an answer: the result keeps that promise
         if owed is not None:
             self._open_reply(owed)
         self.board.update_thoughts({}, (Thought(
@@ -522,6 +536,19 @@ class WorkerSupervisor:
             created_at=snap.room.t, answers=owed, kind="finding",
             brief=brief.id, note=f"résultat de {brief.id}"),), by=f"travaux {brief.id}")
         enforce_cap(self.board)
+
+    def _supersede(self, brief: Brief) -> bool:
+        """What a search found replaces an answer to the same line written from the model's own knowledge
+        ("la Coupe du monde 2026 n'a pas encore eu lieu", when the search found who won): that answer is not
+        said. True if one was waiting, so the result inherits its promise."""
+        lines = {brief.segment, brief.last_line}
+        replaced = {t.id: {"status": ThoughtStatus.STALE, "note": f"remplacée par ce que {brief.id} a trouvé"}
+                    for t in self.board.snapshot().thoughts
+                    if t.kind == "answer" and not t.ack and t.answers in lines
+                    and t.status in (ThoughtStatus.READY, ThoughtStatus.PENDING)}
+        if replaced:
+            self.board.update_thoughts(replaced, by=f"travaux {brief.id}")
+        return bool(replaced)
 
     # -- for the other agents and the console ------------------------------------------
 

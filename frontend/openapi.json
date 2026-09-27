@@ -1,0 +1,2352 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "atlas",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/bootstrap": {
+      "get": {
+        "summary": "Bootstrap",
+        "operationId": "bootstrap_v1_bootstrap_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BootstrapResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/protocol": {
+      "get": {
+        "summary": "Protocol Document",
+        "operationId": "protocol_document_v1_protocol_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProtocolDocument"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}": {
+      "patch": {
+        "summary": "Rename Session",
+        "operationId": "rename_session_v1_sessions__session_id__patch",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionRenameRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Rename Session V1 Sessions  Session Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Session",
+        "operationId": "delete_session_v1_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/export": {
+      "get": {
+        "summary": "Export Session",
+        "operationId": "export_session_v1_sessions__session_id__export_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Activity": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "summary"
+        ],
+        "title": "Activity"
+      },
+      "AgentRun": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "agent": {
+            "type": "string",
+            "enum": [
+              "speaker",
+              "worker",
+              "coordinator",
+              "notes",
+              "naming",
+              "thinkers",
+              "checker",
+              "topic",
+              "rater",
+              "anticipation"
+            ],
+            "title": "Agent"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "done",
+              "failed",
+              "canceled"
+            ],
+            "title": "Status",
+            "default": "running"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "agent",
+          "summary"
+        ],
+        "title": "AgentRun"
+      },
+      "AtlasState": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "protocol_version": {
+            "type": "integer",
+            "title": "Protocol Version"
+          },
+          "process_status": {
+            "$ref": "#/components/schemas/ProcessStatus",
+            "default": "booting"
+          },
+          "session_status": {
+            "$ref": "#/components/schemas/SessionStatus",
+            "default": "idle"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": "Nouvelle session"
+          },
+          "identity_name": {
+            "type": "string",
+            "title": "Identity Name",
+            "default": "Atlas"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "fr",
+              "es",
+              "de",
+              "pt"
+            ],
+            "title": "Language",
+            "default": "en"
+          },
+          "voice_mode": {
+            "type": "string",
+            "enum": [
+              "active",
+              "muted"
+            ],
+            "title": "Voice Mode",
+            "default": "active"
+          },
+          "capture_mode": {
+            "type": "string",
+            "enum": [
+              "microphone",
+              "system",
+              "mixed"
+            ],
+            "title": "Capture Mode",
+            "default": "mixed"
+          },
+          "output_mode": {
+            "type": "string",
+            "enum": [
+              "local_only",
+              "room_speaker",
+              "meeting_injected"
+            ],
+            "title": "Output Mode",
+            "default": "local_only"
+          },
+          "floor_busy": {
+            "type": "boolean",
+            "title": "Floor Busy",
+            "default": false
+          },
+          "room_epoch": {
+            "type": "integer",
+            "title": "Room Epoch",
+            "default": 0
+          },
+          "partial": {
+            "type": "string",
+            "title": "Partial",
+            "default": ""
+          },
+          "notes": {
+            "type": "string",
+            "title": "Notes",
+            "default": ""
+          },
+          "notes_document": {
+            "$ref": "#/components/schemas/NotesDocument"
+          },
+          "notes_version": {
+            "type": "integer",
+            "title": "Notes Version",
+            "default": 0
+          },
+          "notes_cursor": {
+            "type": "integer",
+            "title": "Notes Cursor",
+            "default": 0
+          },
+          "title_version": {
+            "type": "integer",
+            "title": "Title Version",
+            "default": 0
+          },
+          "title_cursor": {
+            "type": "integer",
+            "title": "Title Cursor",
+            "default": 0
+          },
+          "working": {
+            "type": "string",
+            "title": "Working",
+            "default": ""
+          },
+          "transcript": {
+            "items": {
+              "$ref": "#/components/schemas/Utterance"
+            },
+            "type": "array",
+            "title": "Transcript",
+            "default": []
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/Card"
+            },
+            "type": "array",
+            "title": "Cards",
+            "default": []
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            },
+            "type": "array",
+            "title": "Tasks",
+            "default": []
+          },
+          "speeches": {
+            "items": {
+              "$ref": "#/components/schemas/Speech"
+            },
+            "type": "array",
+            "title": "Speeches",
+            "default": []
+          },
+          "activities": {
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            },
+            "type": "array",
+            "title": "Activities",
+            "default": []
+          },
+          "agent_runs": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRun"
+            },
+            "type": "array",
+            "title": "Agent Runs",
+            "default": []
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionRecord"
+            },
+            "type": "array",
+            "title": "Decisions",
+            "default": []
+          },
+          "thoughts": {
+            "items": {
+              "$ref": "#/components/schemas/Thought"
+            },
+            "type": "array",
+            "title": "Thoughts",
+            "default": []
+          },
+          "reservoir_log": {
+            "items": {
+              "$ref": "#/components/schemas/ReservoirEvent"
+            },
+            "type": "array",
+            "title": "Reservoir Log",
+            "default": []
+          },
+          "trace": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEvent"
+            },
+            "type": "array",
+            "title": "Trace",
+            "default": []
+          },
+          "policy_decisions": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyDecision"
+            },
+            "type": "array",
+            "title": "Policy Decisions",
+            "default": []
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic",
+            "default": ""
+          },
+          "previous_topic": {
+            "type": "string",
+            "title": "Previous Topic",
+            "default": ""
+          },
+          "topic_since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Since"
+          },
+          "checking_utterance_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checking Utterance Id"
+          },
+          "health": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Health"
+            },
+            "type": "object",
+            "title": "Health",
+            "default": {}
+          },
+          "pipeline": {
+            "$ref": "#/components/schemas/PipelineMetrics"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "project_id",
+          "protocol_version"
+        ],
+        "title": "AtlasState"
+      },
+      "BackendHello": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "backend.hello",
+            "title": "Type"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "protocol_version": {
+            "type": "integer",
+            "title": "Protocol Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "project_id",
+          "protocol_version"
+        ],
+        "title": "BackendHello"
+      },
+      "BoardCurate": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "board.curate",
+            "title": "Type"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "BoardCurate"
+      },
+      "BootstrapResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "companion_name": {
+            "type": "string",
+            "title": "Companion Name"
+          },
+          "protocol_version": {
+            "type": "integer",
+            "title": "Protocol Version"
+          },
+          "active_model": {
+            "type": "string",
+            "title": "Active Model"
+          },
+          "models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AtlasState"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            },
+            "type": "array",
+            "title": "Sessions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "project_id",
+          "display_name",
+          "companion_name",
+          "protocol_version",
+          "active_model",
+          "models",
+          "state",
+          "sessions"
+        ],
+        "title": "BootstrapResponse"
+      },
+      "CaptureChanged": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "capture.changed",
+            "title": "Type"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "microphone",
+              "system"
+            ],
+            "title": "Source"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "denied",
+              "ended",
+              "unavailable"
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "source",
+          "status"
+        ],
+        "title": "CaptureChanged"
+      },
+      "Card": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idea",
+              "question",
+              "decision",
+              "suggestion",
+              "finding"
+            ],
+            "title": "Kind",
+            "default": "finding"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          },
+          "concept_key": {
+            "type": "string",
+            "title": "Concept Key",
+            "default": ""
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "body"
+        ],
+        "title": "Card"
+      },
+      "ClientHello": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "client.hello",
+            "title": "Type"
+          },
+          "protocol_version": {
+            "type": "integer",
+            "title": "Protocol Version"
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id"
+          },
+          "capabilities": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Capabilities"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "protocol_version",
+          "client_id"
+        ],
+        "title": "ClientHello"
+      },
+      "Decision": {
+        "properties": {
+          "route": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "capture",
+              "investigate",
+              "respond",
+              "act",
+              "control"
+            ],
+            "title": "Route"
+          },
+          "addressee": {
+            "type": "string",
+            "enum": [
+              "atlas",
+              "another_participant",
+              "room",
+              "uncertain"
+            ],
+            "title": "Addressee",
+            "default": "uncertain"
+          },
+          "memory": {
+            "type": "string",
+            "enum": [
+              "ignore",
+              "capture"
+            ],
+            "title": "Memory",
+            "default": "ignore"
+          },
+          "initiative": {
+            "type": "string",
+            "enum": [
+              "none",
+              "assigned",
+              "proactive"
+            ],
+            "title": "Initiative",
+            "default": "none"
+          },
+          "speech_depth": {
+            "type": "string",
+            "enum": [
+              "silent",
+              "brief",
+              "normal",
+              "deep"
+            ],
+            "title": "Speech Depth",
+            "default": "silent"
+          },
+          "timing": {
+            "type": "string",
+            "enum": [
+              "silent",
+              "next_gap",
+              "later"
+            ],
+            "title": "Timing",
+            "default": "silent"
+          },
+          "rationale": {
+            "type": "string",
+            "title": "Rationale",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "route"
+        ],
+        "title": "Decision"
+      },
+      "DecisionRecord": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "utterance_id": {
+            "type": "string",
+            "title": "Utterance Id"
+          },
+          "context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Context"
+          },
+          "result": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "decided_at": {
+            "type": "string",
+            "title": "Decided At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "utterance_id",
+          "context",
+          "result"
+        ],
+        "title": "DecisionRecord"
+      },
+      "FloorChanged": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "floor.changed",
+            "title": "Type"
+          },
+          "busy": {
+            "type": "boolean",
+            "title": "Busy"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "busy"
+        ],
+        "title": "FloorChanged"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "standby",
+              "degraded",
+              "down",
+              "unconfigured"
+            ],
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "Health"
+      },
+      "NotesDocument": {
+        "properties": {
+          "synthesis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Synthesis"
+          },
+          "participants": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Participants"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topics"
+          },
+          "findings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "ideas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ideas"
+          },
+          "hypotheses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hypotheses"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "decisions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Decisions"
+          },
+          "recommendations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recommendations"
+          },
+          "commitments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Commitments"
+          },
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "current_work": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Current Work"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NotesDocument"
+      },
+      "PipelineMetrics": {
+        "properties": {
+          "audio_frames": {
+            "type": "integer",
+            "title": "Audio Frames",
+            "default": 0
+          },
+          "audio_bytes": {
+            "type": "integer",
+            "title": "Audio Bytes",
+            "default": 0
+          },
+          "last_audio_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Audio At"
+          },
+          "stt_messages": {
+            "type": "integer",
+            "title": "Stt Messages",
+            "default": 0
+          },
+          "stt_fragments": {
+            "type": "integer",
+            "title": "Stt Fragments",
+            "default": 0
+          },
+          "stt_turns": {
+            "type": "integer",
+            "title": "Stt Turns",
+            "default": 0
+          },
+          "stt_last_event": {
+            "type": "string",
+            "title": "Stt Last Event",
+            "default": ""
+          },
+          "stt_last_fragment": {
+            "type": "string",
+            "title": "Stt Last Fragment",
+            "default": ""
+          },
+          "stt_inactivity_probability": {
+            "type": "number",
+            "title": "Stt Inactivity Probability",
+            "default": 0
+          },
+          "decisions": {
+            "type": "integer",
+            "title": "Decisions",
+            "default": 0
+          },
+          "agent_runs": {
+            "type": "integer",
+            "title": "Agent Runs",
+            "default": 0
+          },
+          "note_updates": {
+            "type": "integer",
+            "title": "Note Updates",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PipelineMetrics"
+      },
+      "PlaybackChanged": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "playback.started",
+              "playback.finished",
+              "playback.interrupted"
+            ],
+            "title": "Type"
+          },
+          "speech_id": {
+            "type": "string",
+            "title": "Speech Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "speech_id"
+        ],
+        "title": "PlaybackChanged"
+      },
+      "PolicyDecision": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "utterance_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utterance Id"
+          },
+          "speak": {
+            "type": "boolean",
+            "title": "Speak"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "thought_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thought Id"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "speak",
+          "reason"
+        ],
+        "title": "PolicyDecision"
+      },
+      "PresenceCue": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "presence.cue",
+            "title": "Type"
+          },
+          "cue": {
+            "type": "string",
+            "enum": [
+              "thinking",
+              "progress"
+            ],
+            "title": "Cue"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "audio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpeechAudio"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "cue",
+          "label"
+        ],
+        "title": "PresenceCue"
+      },
+      "ProcessStatus": {
+        "type": "string",
+        "enum": [
+          "booting",
+          "ready",
+          "shutting_down",
+          "stopped",
+          "failed"
+        ],
+        "title": "ProcessStatus"
+      },
+      "ProtocolDocument": {
+        "properties": {
+          "client": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ClientHello"
+              },
+              {
+                "$ref": "#/components/schemas/BoardCurate"
+              },
+              {
+                "$ref": "#/components/schemas/SessionStart"
+              },
+              {
+                "$ref": "#/components/schemas/SessionOpen"
+              },
+              {
+                "$ref": "#/components/schemas/SessionLanguage"
+              },
+              {
+                "$ref": "#/components/schemas/VoiceModeCommand"
+              },
+              {
+                "$ref": "#/components/schemas/SessionCommand"
+              },
+              {
+                "$ref": "#/components/schemas/FloorChanged"
+              },
+              {
+                "$ref": "#/components/schemas/CaptureChanged"
+              },
+              {
+                "$ref": "#/components/schemas/TranscriptInject"
+              },
+              {
+                "$ref": "#/components/schemas/PlaybackChanged"
+              }
+            ],
+            "title": "Client",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "board.curate": "#/components/schemas/BoardCurate",
+                "capture.changed": "#/components/schemas/CaptureChanged",
+                "client.hello": "#/components/schemas/ClientHello",
+                "floor.changed": "#/components/schemas/FloorChanged",
+                "playback.finished": "#/components/schemas/PlaybackChanged",
+                "playback.interrupted": "#/components/schemas/PlaybackChanged",
+                "playback.started": "#/components/schemas/PlaybackChanged",
+                "session.command": "#/components/schemas/SessionCommand",
+                "session.language": "#/components/schemas/SessionLanguage",
+                "session.open": "#/components/schemas/SessionOpen",
+                "session.start": "#/components/schemas/SessionStart",
+                "transcript.inject": "#/components/schemas/TranscriptInject",
+                "voice.mode": "#/components/schemas/VoiceModeCommand"
+              }
+            }
+          },
+          "server": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/BackendHello"
+              },
+              {
+                "$ref": "#/components/schemas/StateSnapshot"
+              },
+              {
+                "$ref": "#/components/schemas/TranscriptPartial"
+              },
+              {
+                "$ref": "#/components/schemas/SpeechAuthorized"
+              },
+              {
+                "$ref": "#/components/schemas/SpeechStop"
+              },
+              {
+                "$ref": "#/components/schemas/SpeechAudioChunk"
+              },
+              {
+                "$ref": "#/components/schemas/SpeechAudioEnd"
+              },
+              {
+                "$ref": "#/components/schemas/SpeechSubtitle"
+              },
+              {
+                "$ref": "#/components/schemas/PresenceCue"
+              },
+              {
+                "$ref": "#/components/schemas/ProtocolError"
+              }
+            ],
+            "title": "Server",
+            "discriminator": {
+              "propertyName": "type",
+              "mapping": {
+                "backend.hello": "#/components/schemas/BackendHello",
+                "presence.cue": "#/components/schemas/PresenceCue",
+                "protocol.error": "#/components/schemas/ProtocolError",
+                "speech.audio.chunk": "#/components/schemas/SpeechAudioChunk",
+                "speech.audio.end": "#/components/schemas/SpeechAudioEnd",
+                "speech.authorized": "#/components/schemas/SpeechAuthorized",
+                "speech.stop": "#/components/schemas/SpeechStop",
+                "speech.subtitle": "#/components/schemas/SpeechSubtitle",
+                "state.snapshot": "#/components/schemas/StateSnapshot",
+                "transcript.partial": "#/components/schemas/TranscriptPartial"
+              }
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "client",
+          "server"
+        ],
+        "title": "ProtocolDocument"
+      },
+      "ProtocolError": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "protocol.error",
+            "title": "Type"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "code",
+          "message"
+        ],
+        "title": "ProtocolError"
+      },
+      "ReservoirEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "thought_id": {
+            "type": "string",
+            "title": "Thought Id"
+          },
+          "event": {
+            "type": "string",
+            "title": "Event"
+          },
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why",
+            "default": ""
+          },
+          "utterance": {
+            "type": "string",
+            "title": "Utterance",
+            "default": ""
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "thought_id",
+          "event",
+          "by"
+        ],
+        "title": "ReservoirEvent"
+      },
+      "SessionCommand": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.command",
+            "title": "Type"
+          },
+          "command": {
+            "type": "string",
+            "enum": [
+              "pause",
+              "resume",
+              "stop"
+            ],
+            "title": "Command"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "command"
+        ],
+        "title": "SessionCommand"
+      },
+      "SessionLanguage": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.language",
+            "title": "Type"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "fr",
+              "es",
+              "de",
+              "pt"
+            ],
+            "title": "Language"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "language"
+        ],
+        "title": "SessionLanguage"
+      },
+      "SessionOpen": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.open",
+            "title": "Type"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "session_id"
+        ],
+        "title": "SessionOpen"
+      },
+      "SessionRenameRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "SessionRenameRequest"
+      },
+      "SessionStart": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.start",
+            "title": "Type"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "fr",
+              "es",
+              "de",
+              "pt"
+            ],
+            "title": "Language",
+            "default": "en"
+          },
+          "capture_mode": {
+            "type": "string",
+            "enum": [
+              "microphone",
+              "system",
+              "mixed"
+            ],
+            "title": "Capture Mode",
+            "default": "mixed"
+          },
+          "output_mode": {
+            "type": "string",
+            "enum": [
+              "local_only",
+              "room_speaker",
+              "meeting_injected"
+            ],
+            "title": "Output Mode",
+            "default": "local_only"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type"
+        ],
+        "title": "SessionStart"
+      },
+      "SessionStatus": {
+        "type": "string",
+        "enum": [
+          "idle",
+          "starting",
+          "listening",
+          "paused",
+          "finalizing",
+          "closed",
+          "failed"
+        ],
+        "title": "SessionStatus"
+      },
+      "SessionSummary": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionStatus"
+          },
+          "preview": {
+            "type": "string",
+            "title": "Preview",
+            "default": ""
+          },
+          "utterance_count": {
+            "type": "integer",
+            "title": "Utterance Count",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "session_id",
+          "title",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SessionSummary"
+      },
+      "Speech": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "direct_address",
+              "requested_result",
+              "critical_finding",
+              "reservoir_thought",
+              "correction"
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "proposed",
+              "waiting_gap",
+              "authorized",
+              "playing",
+              "finished",
+              "interrupted",
+              "suppressed",
+              "expired",
+              "canceled",
+              "failed"
+            ],
+            "title": "Status",
+            "default": "proposed"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          },
+          "room_epoch": {
+            "type": "integer",
+            "title": "Room Epoch",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "reason"
+        ],
+        "title": "Speech"
+      },
+      "SpeechAudio": {
+        "properties": {
+          "data_base64": {
+            "type": "string",
+            "title": "Data Base64"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "sample_rate": {
+            "type": "integer",
+            "title": "Sample Rate"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "data_base64",
+          "format",
+          "sample_rate"
+        ],
+        "title": "SpeechAudio"
+      },
+      "SpeechAudioChunk": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "speech.audio.chunk",
+            "title": "Type"
+          },
+          "speech_id": {
+            "type": "string",
+            "title": "Speech Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "title": "Sequence"
+          },
+          "data_base64": {
+            "type": "string",
+            "title": "Data Base64"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format"
+          },
+          "sample_rate": {
+            "type": "integer",
+            "title": "Sample Rate"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "speech_id",
+          "sequence",
+          "data_base64",
+          "format",
+          "sample_rate"
+        ],
+        "title": "SpeechAudioChunk"
+      },
+      "SpeechAudioEnd": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "speech.audio.end",
+            "title": "Type"
+          },
+          "speech_id": {
+            "type": "string",
+            "title": "Speech Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "speech_id"
+        ],
+        "title": "SpeechAudioEnd"
+      },
+      "SpeechAuthorized": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "speech.authorized",
+            "title": "Type"
+          },
+          "speech_id": {
+            "type": "string",
+            "title": "Speech Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "audio": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpeechAudio"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "speech_id",
+          "text",
+          "reason"
+        ],
+        "title": "SpeechAuthorized"
+      },
+      "SpeechStop": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "speech.stop",
+            "title": "Type"
+          },
+          "speech_id": {
+            "type": "string",
+            "title": "Speech Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "speech_id",
+          "reason"
+        ],
+        "title": "SpeechStop"
+      },
+      "SpeechSubtitle": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "speech.subtitle",
+            "title": "Type"
+          },
+          "speech_id": {
+            "type": "string",
+            "title": "Speech Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "segment_index": {
+            "type": "integer",
+            "title": "Segment Index",
+            "default": 0
+          },
+          "start_s": {
+            "type": "number",
+            "title": "Start S",
+            "default": 0
+          },
+          "stop_s": {
+            "type": "number",
+            "title": "Stop S",
+            "default": 0
+          },
+          "final": {
+            "type": "boolean",
+            "title": "Final",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "speech_id",
+          "text"
+        ],
+        "title": "SpeechSubtitle"
+      },
+      "StateSnapshot": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "state.snapshot",
+            "title": "Type"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AtlasState"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            },
+            "type": "array",
+            "title": "Sessions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "state",
+          "sessions"
+        ],
+        "title": "StateSnapshot"
+      },
+      "Task": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "mission_key": {
+            "type": "string",
+            "title": "Mission Key",
+            "default": ""
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed",
+              "canceled",
+              "stale"
+            ],
+            "title": "Status",
+            "default": "queued"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "planning",
+              "executing",
+              "synthesizing",
+              "integrating",
+              "reporting",
+              "complete"
+            ],
+            "title": "Phase",
+            "default": "queued"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tool",
+          "summary"
+        ],
+        "title": "Task"
+      },
+      "Thought": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "idea",
+              "answer",
+              "correction",
+              "finding",
+              "question"
+            ],
+            "title": "Kind",
+            "default": "idea"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic",
+            "default": ""
+          },
+          "utterance": {
+            "type": "string",
+            "title": "Utterance"
+          },
+          "importance": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Importance",
+            "default": 3.0
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "pending",
+              "spoken",
+              "stale"
+            ],
+            "title": "Status",
+            "default": "ready"
+          },
+          "owed": {
+            "type": "boolean",
+            "title": "Owed",
+            "default": false
+          },
+          "chosen": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosen"
+          },
+          "fit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fit"
+          },
+          "already_said": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Already Said"
+          },
+          "rated_utterance_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rated Utterance Id"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "created_ts": {
+            "type": "number",
+            "title": "Created Ts",
+            "default": 0.0
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "utterance"
+        ],
+        "title": "Thought",
+        "description": "Something Atlas could say, prepared before it is time to say it."
+      },
+      "TraceEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "utterance_id": {
+            "type": "string",
+            "title": "Utterance Id"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "heard",
+              "partial",
+              "jev",
+              "checker",
+              "thinkers",
+              "reservoir",
+              "rater",
+              "topic",
+              "policy",
+              "speaker",
+              "worker",
+              "voice"
+            ],
+            "title": "Stage"
+          },
+          "ms": {
+            "type": "integer",
+            "title": "Ms",
+            "default": 0
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "at": {
+            "type": "string",
+            "title": "At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "utterance_id",
+          "stage",
+          "detail"
+        ],
+        "title": "TraceEvent",
+        "description": "One step in the life of a room turn, for the Monitor: what happened, when, and why."
+      },
+      "TranscriptInject": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "transcript.inject",
+            "title": "Type"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "title": "TranscriptInject"
+      },
+      "TranscriptPartial": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "transcript.partial",
+            "title": "Type"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "text"
+        ],
+        "title": "TranscriptPartial"
+      },
+      "Utterance": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "audio"
+          },
+          "speaker": {
+            "type": "string",
+            "title": "Speaker",
+            "default": "unknown"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "auto"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "committed_at": {
+            "type": "string",
+            "title": "Committed At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "Utterance"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VoiceModeCommand": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "voice.mode",
+            "title": "Type"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "active",
+              "muted"
+            ],
+            "title": "Mode"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "mode"
+        ],
+        "title": "VoiceModeCommand"
+      }
+    }
+  }
+}
