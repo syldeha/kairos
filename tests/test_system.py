@@ -516,6 +516,41 @@ def test_checker_turns_a_contradiction_with_memory_into_a_decisive_thought():
     assert fix.importance == 5.0 and fix.id.startswith("c") and "15 000" in fix.utterance
 
 
+def test_a_new_correction_replaces_an_older_one_still_waiting():
+    """Cut off by "900 euros for four", "250 euros is not enough" came back in place of the correction of 900."""
+    from kairos.agents.relevance import Relevance
+    from kairos.agents.thinkers import Thinkers
+    from kairos.contracts import Segment
+
+    class CheckingLLM(FakeLLM):
+        async def json(self, system, user, *, purpose, temperature=0.4):
+            if purpose == "checker":
+                last = user.rsplit("The last line", 1)[1]
+                if "250" in last:
+                    return {"correction": {"topic": "budget", "utterance": "The cheapest flight is 282 euros, so 250 "
+                                                                            "per person is not enough."}}
+                if "900" in last:
+                    return {"correction": {"topic": "total", "utterance": "For four people at 282 euros each, the "
+                                                                           "total is {result} euros, not 900.",
+                                           "expression": "4 * 282"}}
+                return {"correction": None}
+            return await super().json(system, user, purpose=purpose, temperature=temperature)
+
+    board = board_with()
+    board.publish("transcript", (Segment(1, "Sarah", "Let's keep 250 euros per person.", 1.0, 3.0, final=True),
+                                 Segment(2, "Mehdi", "So for four of us that's 900 euros.", 4.0, 7.0, final=True)))
+    llm = CheckingLLM()
+    thinkers = Thinkers(board, llm, "English", relevance=Relevance(board, llm))
+    asyncio.run(thinkers.check(1))
+    [budget] = board.snapshot().thoughts
+    board.update_thoughts({budget.id: {"status": ThoughtStatus.PENDING, "note": "coupée : en attente"}})  # cut off
+    asyncio.run(thinkers.check(2))
+    by_id = {t.id: t for t in board.snapshot().thoughts}
+    assert by_id[budget.id].status == ThoughtStatus.STALE
+    [total] = [t for t in by_id.values() if t.id != budget.id]
+    assert total.status == ThoughtStatus.READY and "1128" in total.utterance.replace(",", "").replace(" ", "")
+
+
 def test_a_correction_may_repeat_what_kairos_said_but_a_remark_may_not():
     from kairos.agents.relevance import Relevance
     board = board_with([thought("said", status=ThoughtStatus.SPOKEN)])

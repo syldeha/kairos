@@ -85,7 +85,7 @@ class JinkoFlights:
         shown = list(dict.fromkeys([id(r) for r in direct[:1] + list(cheapest_by_place.values()) + rows[:3]]))
         by_id = {id(r): r for r in rows}
         lines = tuple(dict.fromkeys(
-            f"- to {r['to']}: {r['airline']}, {'direct' if r['stops'] == 0 else f'{r['stops']} stop(s)'}, "
+            f"- to {r['to']}: {r['airline']}, {'direct' if r['stops'] == 0 else str(r['stops']) + ' stop(s)'}, "
             f"departs {r['dep'][:10]} {r['dep'][11:16]} from {r['from']}, {r['minutes'] // 60}h{r['minutes'] % 60:02d}"
             + (f", return {r['back'][:10]}" if r["back"] else "") + f", {r['price']:.0f} EUR"
             for r in (by_id[i] for i in shown[:6])))[:5]

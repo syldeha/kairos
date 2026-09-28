@@ -148,8 +148,10 @@ class ExaSearch:
         evidence = "\n".join(
             f"[{i + 1}] {r.get('title') or ''} ({_site(r.get('url'))}): " + " … ".join(r.get("highlights") or [])[:600]
             for i, r in enumerate(results))
+        # The language comes first and last: the examples below are in French, and a model otherwise follows them.
         answer = await self.llm.json(
-            "You turn web search results into what a colleague says in a meeting. Return JSON "
+            f"LANGUAGE: the answer must be in {language}, whatever the language of the examples, the query or the "
+            "results.\n\nYou turn web search results into what a colleague says in a meeting. Return JSON "
             '{"answer": "...", "used": [1, 2]}. The answer is one or two short spoken sentences (under 35 words) '
             f"in {language}, answering the question from the results only. Name places by their name (\"Le Grenier "
             "propose...\"); cite a source (\"selon Time Out\") only when it is a guide, a news or weather site distinct "
@@ -159,7 +161,8 @@ class ExaSearch:
             "give (\"du fado dans l'Alfama, les bars du Bairro Alto\"), never generic activities (\"dîner, prendre "
             "un verre\"). Answer exactly what was asked, the most common option first (\"how do we get from the "
             "airport to the centre\": the metro, the bus, a taxi, with time and price, before private transfers). "
-            "No symbols, no URLs. If the results do not answer it, say so in one short sentence.",
+            "No symbols, no URLs. If the results do not answer it, say so in one short sentence. "
+            f"Write the answer in {language}.",
             f"Question raised in the meeting: {question}\nSearch query: {query}\n\nResults:\n{evidence}",
             purpose="search summary", temperature=0.2)
         used = [int(i) - 1 for i in answer.get("used") or [] if str(i).isdigit() and 0 < int(i) <= len(results)]

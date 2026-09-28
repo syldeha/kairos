@@ -266,7 +266,14 @@ class Thinkers:
         thought_id = f"c{next(self._ids)}"
         if self.relevance is not None:
             self.relevance.remember(thought_id, vector)
-        self.board.update_thoughts({}, (Thought(
+        # A correction of an earlier line still waiting (cut off, or not said yet) is replaced by this one: the room
+        # has moved on to newer figures. Cut off by "900 euros for four", "250 euros is not enough" came back
+        # after it, in place of the correction of the 900.
+        older = {t.id: {"status": ThoughtStatus.STALE, "note": "remplacée par une correction plus récente"}
+                 for t in self.board.snapshot().thoughts
+                 if t.kind == "correction" and t.status in (ThoughtStatus.READY, ThoughtStatus.PENDING)
+                 and f"L{segment_id}" not in t.stimuli}
+        self.board.update_thoughts(older, (Thought(
             id=thought_id, topic=str(correction.get("topic") or "correction"), content=utterance,
             utterance=utterance, transition=None, importance=5.0, relevance=0.0, fit_now=0.0, already_said=0.0,
             status=ThoughtStatus.READY, stimuli=(f"L{segment_id}",), version=snap.version, created_at=now, kind="correction"),), by="vérificateur")
