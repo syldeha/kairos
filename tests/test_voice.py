@@ -94,6 +94,22 @@ def test_kairos_heard_back_through_the_microphone_is_dropped():
     assert src.handle({"type": "text", "text": "budget", "start_s": 9.0})
 
 
+def test_stop_discards_a_full_audio_queue_and_remains_idempotent():
+    src, _ = source()
+    for _ in range(src._audio.maxsize):
+        src.push_audio(b"audio")
+    assert src._audio.full()
+
+    src.stop()
+    src.stop()
+
+    assert src._stopped.is_set()
+    assert src._audio.qsize() == 1
+    assert src._audio.get_nowait() is None
+    src.push_audio(b"late audio")
+    assert src._audio.empty()
+
+
 # -- Jev (Vercel AI Gateway), with a fake server --------------------------------------
 
 def _jev(handler):

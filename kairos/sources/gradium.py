@@ -93,6 +93,8 @@ class GradiumSource:
 
     def push_audio(self, pcm: bytes) -> None:
         """24 kHz, 16-bit mono PCM from the microphone (any length; 80 ms chunks are ideal)."""
+        if self._stopped.is_set():
+            return
         if self._origin is None:
             self._origin = self._now()
         with contextlib.suppress(asyncio.QueueFull):  # a stalled connection drops audio, not the meeting
@@ -106,6 +108,14 @@ class GradiumSource:
 
     def stop(self) -> None:
         self._stopped.set()
+        # Stopping must take priority over buffered microphone audio.  In
+        # particular, a failed Gradium connection can leave this bounded queue
+        # full because there is no sender consuming it.  Discard stale chunks
+        # before adding the sentinel so shutdown remains immediate and cannot
+        # raise QueueFull.
+        with contextlib.suppress(asyncio.QueueEmpty):
+            while True:
+                self._audio.get_nowait()
         self._audio.put_nowait(None)
 
     # -- the protocol, independent of the connection (tested directly) -----------------
